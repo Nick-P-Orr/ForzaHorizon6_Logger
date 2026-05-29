@@ -1,7 +1,7 @@
 # ForzaHorizon6_Logger
 
 Tools for reading Forza Horizon 6's **"Data Out"** UDP telemetry — the binary
-struct the game streams once per frame (~60 Hz) to a configurable IP/port.
+struct the game streams every frame (~111 Hz, measured) to a configurable IP/port.
 
 ## Enable telemetry in-game
 
@@ -199,7 +199,7 @@ The packet has two parts:
   scoring candidate offsets for plausibility, so it adapts if FH6 differs. The
   detected offset is shown in the dashboard and console output (e.g. `dash@244`).
 
-> **Confirmed against a real FH6 session:** packets arrive at ~107 Hz and parse
+> **Confirmed against a real FH6 session:** packets arrive at ~111 Hz (≈9 ms apart) and parse
 > cleanly with the Dash block auto-detected at offset **244** (the FH4/FH5 Horizon
 > layout). All fields above were validated against ~53k real packets. If a future
 > update shifts the layout, the Sled fields (including speed and RPM) stay correct;
