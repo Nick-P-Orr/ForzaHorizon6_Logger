@@ -22,7 +22,7 @@ Python 3.8+ (standard library only).
 | File | What it does |
 | --- | --- |
 | [`server.py`](server.py) | Live browser dashboard (HTTP + Server-Sent Events). |
-| [`web/index.html`](web/index.html) | Dashboard UI — gauges, gear, throttle/brake, tire temps, charts. |
+| [`web/index.html`](web/index.html) | Dashboard UI — configurable widgets, ☰ menu to toggle any value. |
 | [`forza_telemetry.py`](forza_telemetry.py) | Packet parser + UDP listener; also a standalone console readout. |
 | [`logger.py`](logger.py) | Decode every field and log it to CSV/JSONL. |
 | [`capture.py`](capture.py) | Raw packet recorder for reverse-engineering the layout. |
@@ -30,7 +30,9 @@ Python 3.8+ (standard library only).
 
 ## Live dashboard
 
-Browser-based gauges, gear/throttle/brake, tire temps, and rolling speed/RPM charts.
+Browser-based, fully configurable. Every Forza value is available as a widget;
+pick which ones to show from the **☰ menu** (top-left). Your selection is saved in
+the browser (localStorage), so it persists across reloads.
 
 ```sh
 python3 server.py --port 5300        # listen for the game on UDP 5300
@@ -38,6 +40,25 @@ python3 server.py --port 5300 --demo # try it with fake data, no game needed
 ```
 
 Then open <http://localhost:8000>.
+
+Each value uses a visualization suited to it:
+
+| Widget type | Used for |
+| --- | --- |
+| Circular gauge | Speed, RPM, power, torque |
+| Rolling line graph | Speed and RPM over time (auto-scaling) |
+| Vertical bar | Throttle, brake, clutch, handbrake, fuel |
+| Centered bidirectional bar | Steering, boost (signed values) |
+| 2×2 wheel grid | Tire temps/slip, suspension, per-wheel flags (color-coded) |
+| G-G plot | Lateral/longitudinal g-force |
+| Track map | Top-down position trail (from world X/Z) |
+| Large readout | Gear, lap times, race position, car class/PI, etc. |
+| LED indicator | Booleans like "race active" |
+
+The ☰ menu groups widgets (Speed & Engine, Drivetrain, Inputs, Tires & Wheels,
+Suspension, Chassis/Motion, Position, Lap & Race, Car Info, Status) and has
+**Defaults / All on / All off** shortcuts. Thirteen sensible widgets are on by
+default; all ~48 are available.
 
 ## Console readout
 
