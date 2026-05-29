@@ -1,0 +1,238 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Forza Horizon 6 — Live Telemetry</title>
+<style>
+  :root {
+    --bg: #0c0f14; --panel: #151a22; --line: #232b36;
+    --txt: #e7edf5; --dim: #7c8a9c; --accent: #c6ff00; --warn: #ff5d5d;
+    --good: #36d399; --blue: #4cc2ff;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--txt);
+    font: 14px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header {
+    display: flex; align-items: center; gap: 16px;
+    padding: 10px 18px; background: var(--panel); border-bottom: 1px solid var(--line);
+  }
+  header h1 { font-size: 16px; margin: 0; font-weight: 600; letter-spacing: .5px; }
+  .status { display: flex; align-items: center; gap: 8px; margin-left: auto; color: var(--dim); }
+  .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--warn); }
+  .dot.on { background: var(--good); box-shadow: 0 0 8px var(--good); }
+  .grid {
+    display: grid; gap: 14px; padding: 16px;
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    max-width: 1200px; margin: 0 auto;
+  }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 14px; position: relative;
+  }
+  .card h2 {
+    font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
+    color: var(--dim); margin: 0 0 10px;
+  }
+  .gear { text-align: center; }
+  .gear .big { font-size: 96px; font-weight: 800; line-height: 1; color: var(--accent); }
+  .readout { display: flex; justify-content: space-between; padding: 4px 0; }
+  .readout .k { color: var(--dim); }
+  .readout .v { font-variant-numeric: tabular-nums; font-weight: 600; }
+  .bars { display: flex; gap: 14px; align-items: flex-end; height: 150px; justify-content: center; }
+  .bar-wrap { width: 46px; text-align: center; }
+  .bar-track {
+    width: 46px; height: 120px; background: var(--bg); border: 1px solid var(--line);
+    border-radius: 6px; overflow: hidden; display: flex; align-items: flex-end;
+  }
+  .bar-fill { width: 100%; height: 0%; transition: height .05s linear; }
+  .bar-fill.thr { background: var(--good); }
+  .bar-fill.brk { background: var(--warn); }
+  .bar-label { font-size: 11px; color: var(--dim); margin-top: 6px; }
+  .tires { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+  .tire {
+    background: var(--bg); border: 1px solid var(--line); border-radius: 8px;
+    padding: 10px; text-align: center;
+  }
+  .tire .t { font-size: 22px; font-weight: 700; font-variant-numeric: tabular-nums; }
+  .tire .lbl { font-size: 10px; color: var(--dim); }
+  canvas { display: block; width: 100%; }
+  .span2 { grid-column: span 2; }
+  .hint { color: var(--dim); font-size: 12px; padding: 0 18px 18px; max-width: 1200px; margin: 0 auto; }
+</style>
+</head>
+<body>
+<header>
+  <h1>FORZA HORIZON 6 · LIVE TELEMETRY</h1>
+  <div class="status">
+    <span id="dashbase"></span>
+    <span class="dot" id="dot"></span>
+    <span id="statustext">connecting…</span>
+  </div>
+</header>
+
+<div class="grid">
+  <div class="card">
+    <h2>Speed</h2>
+    <canvas id="speedGauge" width="220" height="160"></canvas>
+  </div>
+
+  <div class="card">
+    <h2>Engine RPM</h2>
+    <canvas id="rpmGauge" width="220" height="160"></canvas>
+  </div>
+
+  <div class="card gear">
+    <h2>Gear</h2>
+    <div class="big" id="gear">–</div>
+  </div>
+
+  <div class="card">
+    <h2>Throttle / Brake</h2>
+    <div class="bars">
+      <div class="bar-wrap">
+        <div class="bar-track"><div class="bar-fill thr" id="thr"></div></div>
+        <div class="bar-label">THR</div>
+      </div>
+      <div class="bar-wrap">
+        <div class="bar-track"><div class="bar-fill brk" id="brk"></div></div>
+        <div class="bar-label">BRK</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Drivetrain</h2>
+    <div class="readout"><span class="k">Power</span><span class="v" id="power">–</span></div>
+    <div class="readout"><span class="k">Torque</span><span class="v" id="torque">–</span></div>
+    <div class="readout"><span class="k">Boost</span><span class="v" id="boost">–</span></div>
+    <div class="readout"><span class="k">Fuel</span><span class="v" id="fuel">–</span></div>
+    <div class="readout"><span class="k">Steer</span><span class="v" id="steer">–</span></div>
+  </div>
+
+  <div class="card">
+    <h2>Tire Temps (°C)</h2>
+    <div class="tires">
+      <div class="tire"><div class="t" id="tfl">–</div><div class="lbl">FL</div></div>
+      <div class="tire"><div class="t" id="tfr">–</div><div class="lbl">FR</div></div>
+      <div class="tire"><div class="t" id="trl">–</div><div class="lbl">RL</div></div>
+      <div class="tire"><div class="t" id="trr">–</div><div class="lbl">RR</div></div>
+    </div>
+  </div>
+
+  <div class="card span2">
+    <h2>Speed (km/h) — last 20 s</h2>
+    <canvas id="speedChart" width="600" height="140"></canvas>
+  </div>
+
+  <div class="card span2">
+    <h2>RPM — last 20 s</h2>
+    <canvas id="rpmChart" width="600" height="140"></canvas>
+  </div>
+</div>
+
+<p class="hint">
+  Speed is derived from the packet's velocity vector (the stable "Sled" block),
+  so it is reliable on FH6 even before the Dash field offsets are confirmed.
+  Gear, throttle, brake and lap data come from the auto-detected Dash block
+  (offset shown top-right).
+</p>
+
+<script>
+const $ = id => document.getElementById(id);
+const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+
+function drawGauge(canvas, value, max, label, unit, color) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height;
+  const cx = w / 2, cy = h * 0.78, r = Math.min(w, h) * 0.62;
+  ctx.clearRect(0, 0, w, h);
+  const start = Math.PI * 0.8, end = Math.PI * 2.2;
+  ctx.lineWidth = 12; ctx.lineCap = 'round';
+  ctx.strokeStyle = css('--line');
+  ctx.beginPath(); ctx.arc(cx, cy, r, start, end); ctx.stroke();
+  const frac = Math.max(0, Math.min(1, value / max));
+  ctx.strokeStyle = color;
+  ctx.beginPath(); ctx.arc(cx, cy, r, start, start + (end - start) * frac); ctx.stroke();
+  ctx.fillStyle = css('--txt'); ctx.textAlign = 'center';
+  ctx.font = '700 34px -apple-system, sans-serif';
+  ctx.fillText(Math.round(value), cx, cy - 4);
+  ctx.fillStyle = css('--dim'); ctx.font = '12px -apple-system, sans-serif';
+  ctx.fillText(unit, cx, cy + 14);
+}
+
+function drawChart(canvas, points, max, color) {
+  const ctx = canvas.getContext('2d');
+  const w = canvas.width, h = canvas.height, pad = 6;
+  ctx.clearRect(0, 0, w, h);
+  ctx.strokeStyle = css('--line'); ctx.lineWidth = 1;
+  ctx.beginPath(); ctx.moveTo(0, h - pad); ctx.lineTo(w, h - pad); ctx.stroke();
+  if (points.length < 2) return;
+  const n = points.length;
+  ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+  points.forEach((p, i) => {
+    const x = (i / (n - 1)) * w;
+    const y = h - pad - (Math.max(0, Math.min(1, p / max))) * (h - 2 * pad);
+    i ? ctx.lineTo(x, y) : ctx.moveTo(x, y);
+  });
+  ctx.stroke();
+}
+
+function tireColor(t) {
+  if (t == null) return css('--dim');
+  if (t < 70) return css('--blue');
+  if (t > 105) return css('--warn');
+  return css('--good');
+}
+
+const MAXPTS = 600; // ~20s @ 30Hz
+const speedHist = [], rpmHist = [];
+
+const es = new EventSource('/stream');
+es.onmessage = ev => {
+  const d = JSON.parse(ev.data);
+  const racing = d.connected && d.is_racing;
+  $('dot').classList.toggle('on', !!d.connected);
+  $('statustext').textContent = !d.connected ? 'waiting for game…'
+                              : (d.is_racing ? 'live' : 'in menu / paused');
+  $('dashbase').textContent = d.dash_base != null ? `dash@${d.dash_base}` : '';
+
+  const speed = d.speed_kmh ?? 0;
+  const rpm = d.current_engine_rpm ?? 0;
+  const maxRpm = d.engine_max_rpm || 8000;
+
+  drawGauge($('speedGauge'), speed, 320, 'Speed', 'km/h', css('--accent'));
+  drawGauge($('rpmGauge'), rpm, maxRpm, 'RPM', `/ ${Math.round(maxRpm)}`,
+            rpm > maxRpm * 0.92 ? css('--warn') : css('--blue'));
+
+  $('gear').textContent = d.gear_label ?? '–';
+  $('thr').style.height = ((d.accel ?? 0) / 255 * 100) + '%';
+  $('brk').style.height = ((d.brake ?? 0) / 255 * 100) + '%';
+
+  $('power').textContent  = d.power  != null ? (d.power / 1000).toFixed(1) + ' kW' : '–';
+  $('torque').textContent = d.torque != null ? Math.round(d.torque) + ' Nm' : '–';
+  $('boost').textContent  = d.boost  != null ? d.boost.toFixed(2) : '–';
+  $('fuel').textContent   = d.fuel   != null ? (d.fuel * 100).toFixed(0) + ' %' : '–';
+  $('steer').textContent  = d.steer  != null ? d.steer : '–';
+
+  const tires = {tfl: d.tire_temp_fl, tfr: d.tire_temp_fr, trl: d.tire_temp_rl, trr: d.tire_temp_rr};
+  for (const [id, t] of Object.entries(tires)) {
+    const el = $(id);
+    el.textContent = t != null ? Math.round(t) : '–';
+    el.style.color = tireColor(t);
+  }
+
+  if (racing) {
+    speedHist.push(speed); rpmHist.push(rpm);
+    if (speedHist.length > MAXPTS) speedHist.shift();
+    if (rpmHist.length > MAXPTS) rpmHist.shift();
+  }
+  drawChart($('speedChart'), speedHist, 320, css('--accent'));
+  drawChart($('rpmChart'), rpmHist, maxRpm, css('--blue'));
+};
+es.onerror = () => { $('statustext').textContent = 'stream lost — retrying…'; };
+</script>
+</body>
+</html>
