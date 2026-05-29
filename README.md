@@ -46,8 +46,8 @@ Each value uses a visualization suited to it:
 | Widget type | Used for |
 | --- | --- |
 | Circular gauge | Speed, RPM, power, torque |
-| Rolling line graph | Speed and RPM over time (auto-scaling) |
-| Vertical bar | Throttle, brake, clutch, handbrake, fuel |
+| Rolling line graph | Speed and RPM over time (auto-scaling); throttle and brake as separate 30 s input traces |
+| Vertical bar | Clutch, handbrake, fuel |
 | Centered bidirectional bar | Steering, boost (signed values) |
 | 2×2 wheel grid | Tire temps/slip, suspension, per-wheel flags (color-coded) |
 | G-G plot | Lateral/longitudinal g-force |
@@ -57,8 +57,8 @@ Each value uses a visualization suited to it:
 
 The ☰ menu groups widgets (Speed & Engine, Drivetrain, Inputs, Tires & Wheels,
 Suspension, Chassis/Motion, Position, Lap & Race, Car Info, Status) and has
-**Defaults / All on / All off** shortcuts. Thirteen sensible widgets are on by
-default; all ~48 are available.
+**Defaults / All on / All off** shortcuts. Fourteen sensible widgets are on by
+default; all ~49 are available.
 
 ## Console readout
 

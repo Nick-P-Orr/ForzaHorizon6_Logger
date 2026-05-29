@@ -251,7 +251,10 @@ const FIELDS = [
   { id:'fuel', g:'Drivetrain', label:'Fuel', type:'bar', def:true, read:d=>d.fuel*100, max:100, unit:'%', color:'--good' },
 
   // Inputs
-  { id:'inputs', g:'Inputs', label:'Throttle / Brake', type:'inputbars', def:true },
+  { id:'throttle_chart', g:'Inputs', label:'Throttle (trace)', type:'line', def:true, wide:true,
+    read:d=>(d.accel??0)/255*100, min:0, max:100, color:'--good', tip:'%', pts:900 },
+  { id:'brake_chart', g:'Inputs', label:'Brake (trace)', type:'line', def:true, wide:true,
+    read:d=>(d.brake??0)/255*100, min:0, max:100, color:'--warn', tip:'%', pts:900 },
   { id:'steer', g:'Inputs', label:'Steering', type:'bidir', def:true, read:d=>d.steer, span:127, unit:'' },
   { id:'clutch', g:'Inputs', label:'Clutch', type:'bar', read:d=>d.clutch/255*100, max:100, unit:'%', color:'--blue' },
   { id:'handbrake', g:'Inputs', label:'Handbrake', type:'bar', read:d=>d.handbrake/255*100, max:100, unit:'%', color:'--warn' },
@@ -328,10 +331,10 @@ function makeWidget(f) {
     update = d => drawGauge(cv, f.read(d)||0, resolve(f.max,d), f.unit, css(resolve(f.color,d)||'--accent'));
   } else if (f.type === 'line') {
     const cv = Object.assign(document.createElement('canvas'), {width:600, height:130});
-    body.appendChild(cv); const hist = [];
+    body.appendChild(cv); const hist = []; const cap = f.pts || MAXPTS;
     update = d => {
       const v = f.read(d); if (v != null && d.is_racing) hist.push(v);
-      if (hist.length > MAXPTS) hist.shift();
+      if (hist.length > cap) hist.shift();
       drawChart(cv, hist, css(f.color), {min:f.min, max:resolve(f.max,d)});
     };
   } else if (f.type === 'big') {
@@ -359,13 +362,6 @@ function makeWidget(f) {
     const fill = body.querySelector('.bar-fill'), v = body.querySelector('#v');
     update = d => { const val = f.read(d)||0; fill.style.height = Math.max(0,Math.min(100,val/f.max*100))+'%';
                     v.textContent = fmt(val,0)+(f.unit||''); };
-  } else if (f.type === 'inputbars') {
-    body.innerHTML = `<div class="bars">
-      <div class="bar-wrap"><div class="bar-track"><div class="bar-fill" id="thr" style="background:${css('--good')}"></div></div><div class="bar-label">THR</div></div>
-      <div class="bar-wrap"><div class="bar-track"><div class="bar-fill" id="brk" style="background:${css('--warn')}"></div></div><div class="bar-label">BRK</div></div>
-    </div>`;
-    const thr = body.querySelector('#thr'), brk = body.querySelector('#brk');
-    update = d => { thr.style.height = (d.accel??0)/255*100+'%'; brk.style.height = (d.brake??0)/255*100+'%'; };
   } else if (f.type === 'bidir') {
     body.innerHTML = `<div class="bidir"><div class="mid"></div><div class="fill"></div></div>
       <div style="text-align:center;font-variant-numeric:tabular-nums" id="v">–</div>`;
