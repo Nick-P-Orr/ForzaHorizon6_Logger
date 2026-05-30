@@ -230,11 +230,44 @@ function drawMap(cv, trail) {
   for (const p of trail){ minX=Math.min(minX,p.x);maxX=Math.max(maxX,p.x);minZ=Math.min(minZ,p.z);maxZ=Math.max(maxZ,p.z); }
   const sx = (maxX-minX)||1, sz = (maxZ-minZ)||1, s = Math.min((w-2*pad)/sx, (h-2*pad)/sz);
   const X = x => pad + (x-minX)*s, Y = z => h - pad - (z-minZ)*s;
-  ctx.strokeStyle = css('--blue'); ctx.lineWidth = 2; ctx.beginPath();
-  trail.forEach((p,i) => i ? ctx.lineTo(X(p.x),Y(p.z)) : ctx.moveTo(X(p.x),Y(p.z)));
-  ctx.stroke();
+
+  // Color each trail segment by driver input at the segment's START point:
+  //  - red intensity for brake (takes precedence — it's the more interesting signal)
+  //  - green intensity for throttle
+  //  - dim gray for coasting (no significant input)
+  // Bucketing into a few intensity buckets keeps the segment count manageable
+  // while letting partial-throttle / trail-braking still read visually.
+  ctx.lineWidth = 2.5; ctx.lineCap = 'round';
+  const dim = css('--line');
+  function segColor(p) {
+    const t = p.t ?? 0, b = p.b ?? 0;
+    if (b > 30) return `rgba(255, 93, 93, ${0.45 + 0.55 * Math.min(1, b/255)})`;   // brake
+    if (t > 30) return `rgba(54, 211, 153, ${0.45 + 0.55 * Math.min(1, t/255)})`;  // throttle
+    return dim;                                                                    // coast
+  }
+  for (let i = 1; i < trail.length; i++) {
+    const a = trail[i-1], c = trail[i];
+    ctx.strokeStyle = segColor(a);
+    ctx.beginPath(); ctx.moveTo(X(a.x), Y(a.z)); ctx.lineTo(X(c.x), Y(c.z)); ctx.stroke();
+  }
+
+  // Current position dot
   const last = trail[trail.length-1];
-  ctx.fillStyle = css('--accent'); ctx.beginPath(); ctx.arc(X(last.x),Y(last.z),4,0,7); ctx.fill();
+  ctx.fillStyle = css('--accent'); ctx.beginPath(); ctx.arc(X(last.x), Y(last.z), 4, 0, 7); ctx.fill();
+
+  // Legend (compact, top-left)
+  ctx.font = '10px sans-serif'; ctx.textBaseline = 'middle';
+  const legend = [
+    [css('--good'), 'throttle'],
+    [css('--warn'), 'brake'],
+    [dim,           'coast'],
+  ];
+  let lx = pad, ly = pad + 4;
+  for (const [col, lbl] of legend) {
+    ctx.fillStyle = col; ctx.fillRect(lx, ly - 4, 10, 3);
+    ctx.fillStyle = css('--dim'); ctx.fillText(lbl, lx + 14, ly - 2);
+    lx += ctx.measureText(lbl).width + 32;
+  }
 }
 
 /* ---- field catalog: every Forza value + how to visualize it -------------- */
@@ -455,7 +488,9 @@ function makeWidget(f) {
     body.appendChild(cv); const trail = [];
     update = d => {
       if (d.is_racing && d.position_x != null) {
-        trail.push({x:d.position_x, z:d.position_z});
+        // Capture throttle (accel) and brake with each point so drawMap can
+        // color the trail by driver input (overlays #5 onto the track map).
+        trail.push({x:d.position_x, z:d.position_z, t:d.accel ?? 0, b:d.brake ?? 0});
         if (trail.length > MAXPTS*4) trail.shift();
       }
       drawMap(cv, trail);
