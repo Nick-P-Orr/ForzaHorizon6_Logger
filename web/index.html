@@ -527,7 +527,12 @@ function makeWidget(f) {
   } else if (f.type === 'gg') {
     const cv = Object.assign(document.createElement('canvas'), {width:200, height:200});
     cv.style.maxWidth = '200px'; cv.style.margin = '0 auto'; body.appendChild(cv);
-    update = d => drawGG(cv, (d.acceleration_x||0)/9.81, (d.acceleration_z||0)/9.81);
+    // Forza reports acceleration in the car's frame with the OPPOSITE sign
+    // convention to a conventional G-G plot (top = accel, right = right turn).
+    // Confirmed empirically against real FH6 driving — negate both axes so:
+    //   braking  -> dot drops down,   accelerating -> dot moves up
+    //   left tn  -> dot moves left,   right turn   -> dot moves right
+    update = d => drawGG(cv, -(d.acceleration_x||0)/9.81, -(d.acceleration_z||0)/9.81);
   } else if (f.type === 'map') {
     const cv = Object.assign(document.createElement('canvas'), {width:600, height:260});
     body.appendChild(cv); const trail = [];

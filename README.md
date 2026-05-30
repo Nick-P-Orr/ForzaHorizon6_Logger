@@ -289,4 +289,6 @@ second endpoint).
 - ~~Make the "last lap time" save the last five laps~~ (done)
 - ~~Overlay the braking and throttle traces onto the track map~~ (done)
 - Telemetry record feature — save a race of telemetry, add a replay feature later
-- G-forces are inverted?
+- ~~G-forces are inverted?~~ (done — Forza reports car-frame acceleration with the
+  opposite sign convention to a conventional G-G plot; both axes are now negated
+  so acceleration goes up, braking goes down, right turn goes right.)
