@@ -53,6 +53,7 @@ Each value uses a visualization suited to it:
 | G-G plot | Lateral/longitudinal g-force |
 | Track map | Top-down position trail (from world X/Z) |
 | Large readout | Gear, lap times, race position, car class/PI, etc. |
+| Lap history list | Last 5 completed lap times (latest highlighted, best lap in green) |
 | LED indicator | Booleans like "race active" |
 
 The ☰ menu groups widgets (Speed & Engine, Drivetrain, Inputs, Tires & Wheels,
@@ -278,7 +279,7 @@ second endpoint).
 
 - Make this usable on an iPad
 - ~~Make values persist when the game pauses or a race ends~~ (done)
-- Make the "last lap time" save the last five laps
+- ~~Make the "last lap time" save the last five laps~~ (done)
 - Overlay the braking and throttle traces onto the track map
 - Telemetry record feature — save a race of telemetry, add a replay feature later
 - G-forces are inverted?

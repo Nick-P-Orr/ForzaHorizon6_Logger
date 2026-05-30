@@ -80,6 +80,16 @@
   .led { width: 22px; height: 22px; border-radius: 50%; background: var(--line); }
   .led.on { background: var(--good); box-shadow: 0 0 10px var(--good); }
 
+  .laplist { display: flex; flex-direction: column; gap: 4px; }
+  .laplist .lap { display: flex; justify-content: space-between; padding: 5px 8px;
+                  background: var(--bg); border: 1px solid var(--line); border-radius: 6px;
+                  font-variant-numeric: tabular-nums; }
+  .laplist .lap.latest { border-color: var(--accent); }
+  .laplist .lap.best { background: rgba(54, 211, 153, 0.12); border-color: var(--good); }
+  .laplist .lap .n { color: var(--dim); font-size: 11px; }
+  .laplist .lap .t { font-weight: 600; }
+  .laplist .empty { color: var(--dim); text-align: center; padding: 18px 0; font-size: 12px; }
+
   .hint { color: var(--dim); font-size: 12px; padding: 0 18px 24px; max-width: 1280px; margin: 0 auto; }
   .empty { color: var(--dim); text-align: center; padding: 60px 20px; }
 
@@ -292,7 +302,7 @@ const FIELDS = [
 
   // Lap & Race
   { id:'current_lap', g:'Lap & Race', label:'Current lap', type:'time', read:d=>d.current_lap },
-  { id:'last_lap', g:'Lap & Race', label:'Last lap', type:'time', read:d=>d.last_lap },
+  { id:'last_lap', g:'Lap & Race', label:'Last 5 laps', type:'laps', def:true, keep:5 },
   { id:'best_lap', g:'Lap & Race', label:'Best lap', type:'time', read:d=>d.best_lap },
   { id:'current_race_time', g:'Lap & Race', label:'Race time', type:'time', read:d=>d.current_race_time },
   { id:'lap_number', g:'Lap & Race', label:'Lap number', type:'value', read:d=>d.lap_number },
@@ -351,6 +361,37 @@ function makeWidget(f) {
   } else if (f.type === 'time') {
     const e = document.createElement('div'); e.className = 'bigval'; e.textContent = '–';
     body.appendChild(e); update = d => e.textContent = fmtTime(f.read(d));
+  } else if (f.type === 'laps') {
+    // Rolling history of the last N completed lap times. The game exposes
+    // `last_lap` (seconds) and `lap_number` (current lap). When lap_number
+    // ticks up — or last_lap changes to a new non-zero value — that's a lap
+    // completion; capture it. Tagged with the lap number it belongs to.
+    body.innerHTML = `<div class="laplist" id="lst"><div class="empty">No laps yet</div></div>`;
+    const lst = body.querySelector('#lst');
+    const keep = f.keep || 5;
+    const history = []; // [{n: lap#, t: seconds}]
+    let prevLapNum = null, prevLastLap = null;
+    update = d => {
+      const cur = d.lap_number ?? null, last = d.last_lap ?? 0;
+      const isNewLap = last > 0 && (
+        (prevLapNum != null && cur != null && cur > prevLapNum) ||
+        (prevLastLap != null && Math.abs(last - prevLastLap) > 1e-3)
+      );
+      if (isNewLap) {
+        // The lap that just finished is the one before `cur` (or unknown).
+        const completedNum = cur != null ? cur - 1 : (history.length ? history[history.length-1].n + 1 : 1);
+        history.push({ n: completedNum, t: last });
+        if (history.length > keep) history.shift();
+      }
+      prevLapNum = cur; prevLastLap = last;
+
+      if (!history.length) { lst.innerHTML = '<div class="empty">No laps yet</div>'; return; }
+      const best = Math.min(...history.map(h => h.t));
+      lst.innerHTML = history.slice().reverse().map((h, i) => {
+        const cls = (h.t === best ? 'best ' : '') + (i === 0 ? 'latest' : '');
+        return `<div class="lap ${cls}"><span class="n">Lap ${h.n}</span><span class="t">${fmtTime(h.t)}</span></div>`;
+      }).join('');
+    };
   } else if (f.type === 'bool') {
     body.innerHTML = `<div class="ledwrap"><span class="led" id="l"></span><span id="t">–</span></div>`;
     const l = body.querySelector('#l'), t = body.querySelector('#t');
