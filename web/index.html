@@ -165,12 +165,33 @@
   label.item .ty { color: var(--dim); font-size: 11px; }
   .closeX { background: none; border: 0; color: var(--dim); font-size: 22px; cursor: pointer; margin-left: auto;
             min-width: 44px; min-height: 44px; -webkit-tap-highlight-color: transparent; }
+
+  /* Record button in header */
+  .recbtn {
+    background: var(--bg); border: 1px solid var(--line); color: var(--txt);
+    display: flex; align-items: center; gap: 8px;
+    min-height: 34px; padding: 0 12px; border-radius: 8px; cursor: pointer; font-size: 13px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  @media (hover: hover) { .recbtn:hover { border-color: var(--accent); } }
+  .recbtn .reccircle { width: 12px; height: 12px; border-radius: 50%; background: var(--warn); }
+  .recbtn.on { border-color: var(--warn); }
+  .recbtn.on .reccircle { background: var(--warn); animation: recpulse 1.2s ease-in-out infinite; }
+  .recbtn .recinfo { font-variant-numeric: tabular-nums; color: var(--dim); }
+  .recbtn.on .recinfo { color: var(--txt); }
+  @keyframes recpulse {
+    0%,100% { box-shadow: 0 0 0 0 rgba(255,93,93,0.7); opacity: 1; }
+    50%     { box-shadow: 0 0 0 6px rgba(255,93,93,0);   opacity: 0.6; }
+  }
 </style>
 </head>
 <body>
 <header>
   <button class="burger" id="burger" title="Choose widgets">☰</button>
   <h1>FORZA HORIZON 6 · TELEMETRY</h1>
+  <button class="recbtn" id="recbtn" title="Record telemetry to file">
+    <span class="reccircle"></span><span id="reclabel">Record</span><span class="recinfo" id="recinfo"></span>
+  </button>
   <div class="status">
     <span id="dashbase"></span>
     <span class="dot" id="dot"></span>
@@ -599,6 +620,57 @@ const closeDrawer = () => { drawer.classList.remove('open'); backdrop.classList.
 document.getElementById('burger').onclick = openDrawer;
 document.getElementById('closeX').onclick = closeDrawer;
 backdrop.onclick = closeDrawer;
+
+/* ---- recording controls -------------------------------------------------- */
+// Polls /record/status so the button reflects state even if recording was
+// started by a different tab/device.
+const recbtn = document.getElementById('recbtn');
+const reclabel = document.getElementById('reclabel');
+const recinfo = document.getElementById('recinfo');
+
+function fmtRecDuration(s) {
+  if (!s || s < 0) return '';
+  const m = Math.floor(s / 60), sec = Math.floor(s - m * 60);
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+function paintRecState(st) {
+  const on = !!st.recording;
+  recbtn.classList.toggle('on', on);
+  reclabel.textContent = on ? 'Stop' : 'Record';
+  recinfo.textContent = on
+    ? `● ${fmtRecDuration(st.duration)}  ${st.rows.toLocaleString()} rows`
+    : '';
+  recbtn.title = on
+    ? `Recording to ${st.filename} — click to stop`
+    : 'Record telemetry to a .fhrec file';
+}
+async function refreshRecStatus() {
+  try {
+    const r = await fetch('/record/status', {cache: 'no-store'});
+    if (r.ok) paintRecState(await r.json());
+  } catch {}
+}
+recbtn.addEventListener('click', async () => {
+  recbtn.disabled = true;
+  try {
+    const recording = recbtn.classList.contains('on');
+    const url = recording ? '/record/stop' : '/record/start';
+    const r = await fetch(url, {method: 'POST'});
+    if (r.ok) {
+      const st = await r.json();
+      paintRecState(st);
+      if (recording && st.filename) {
+        // brief confirmation flash
+        recinfo.textContent = `saved ${st.filename}`;
+        setTimeout(() => paintRecState({recording: false, rows: 0, duration: 0}), 2500);
+      }
+    }
+  } catch {} finally {
+    recbtn.disabled = false;
+  }
+});
+refreshRecStatus();
+setInterval(refreshRecStatus, 1000);  // keep label/duration fresh while recording
 
 // Touch: swipe the drawer left to close (iPad-friendly).
 let _touchStartX = null;

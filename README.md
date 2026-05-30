@@ -41,6 +41,13 @@ python3 server.py --port 5300 --demo # try it with fake data, no game needed
 
 Then open <http://localhost:8000>.
 
+**Recording:** click the **Record** button in the header to save a session to a
+`.fhrec` file in `recordings/`. The button shows a pulsing red dot, the elapsed
+time, and the row count while active; click again to stop. Files are JSONL —
+the first line is metadata, every following line is the same dict the `/stream`
+SSE sends, plus a `t` field with seconds since recording started (so a future
+replayer can preserve the cadence). The `recordings/` dir is git-ignored.
+
 **On iPad:** open the dashboard URL in Safari, then **Share → Add to Home Screen**.
 The app launches full-screen with no browser chrome, honors notch / Dynamic Island
 safe areas, has 44 pt touch targets in the ☰ menu, and you can swipe the drawer
@@ -288,7 +295,8 @@ second endpoint).
 - ~~Make values persist when the game pauses or a race ends~~ (done)
 - ~~Make the "last lap time" save the last five laps~~ (done)
 - ~~Overlay the braking and throttle traces onto the track map~~ (done)
-- Telemetry record feature — save a race of telemetry, add a replay feature later
+- ~~Telemetry record feature — save a race of telemetry~~ (done — Record button
+  in the dashboard header writes a `.fhrec` JSONL file. Replay feature still TODO.)
 - ~~G-forces are inverted?~~ (done — Forza reports car-frame acceleration with the
   opposite sign convention to a conventional G-G plot; both axes are now negated
   so acceleration goes up, braking goes down, right turn goes right.)

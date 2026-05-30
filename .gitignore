@@ -1,10 +1,12 @@
 # Local Claude Code context (dev notes, not shipped)
 CLAUDE.md
 
-# Telemetry captures and logs
+# Telemetry captures, logs, and recordings
 *.fhcap
+*.fhrec
 forza_log_*.csv
 forza_log_*.jsonl
+recordings/
 
 # Python
 __pycache__/

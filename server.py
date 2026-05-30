@@ -24,14 +24,17 @@ from __future__ import annotations
 import argparse
 import json
 import math
+import re
 import threading
 import time
+from datetime import datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import forza_telemetry as ft
 
 WEB_DIR = Path(__file__).resolve().parent / "web"
+RECORDINGS_DIR = Path(__file__).resolve().parent / "recordings"
 
 # Shared latest-reading state, written by the UDP/demo thread, read by HTTP.
 _state_lock = threading.Lock()
@@ -49,12 +52,129 @@ def _get_latest() -> dict:
         return dict(_latest)
 
 
+# ---- Recording ---------------------------------------------------------------
+# A telemetry session can be recorded to disk while the dashboard is running.
+# Format: JSONL (one parsed packet per line, the same dict /stream sends), with
+# an added `t` field = seconds since recording started, so a future replayer can
+# preserve the original cadence without absolute timestamps.
+
+class Recorder:
+    """Append-only JSONL recorder. Thread-safe (UDP thread writes; HTTP starts/stops)."""
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._fh = None              # open file handle while recording
+        self._path: Path | None = None
+        self._started_at: float = 0.0
+        self._row_count: int = 0
+
+    @property
+    def active(self) -> bool:
+        with self._lock:
+            return self._fh is not None
+
+    def start(self, label: str | None = None) -> dict:
+        with self._lock:
+            if self._fh is not None:
+                return self._status_locked()
+            RECORDINGS_DIR.mkdir(exist_ok=True)
+            ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+            slug = _safe_slug(label) if label else ""
+            name = f"fh6_{ts}{('_' + slug) if slug else ''}.fhrec"
+            self._path = RECORDINGS_DIR / name
+            self._fh = open(self._path, "w", encoding="utf-8", buffering=1)  # line-buffered
+            self._started_at = time.time()
+            self._row_count = 0
+            # First line is metadata so replayers don't need to guess.
+            self._fh.write(json.dumps({
+                "_meta": True, "version": 1, "started_at": self._started_at,
+                "started_iso": datetime.now().isoformat(timespec="seconds"),
+                "label": label or "",
+            }) + "\n")
+            return self._status_locked()
+
+    def stop(self) -> dict:
+        with self._lock:
+            if self._fh is None:
+                return self._status_locked()
+            # Capture the live stats BEFORE closing so we can return a useful
+            # summary (rows, duration, filename) alongside the "stopped" flag.
+            summary = {
+                "recording": False,
+                "stopped": True,
+                "rows": self._row_count,
+                "duration": round(time.time() - self._started_at, 2),
+                "started_at": self._started_at,
+                "filename": self._path.name if self._path else None,
+            }
+            try:
+                self._fh.close()
+            finally:
+                self._fh = None
+            return summary
+
+    def write(self, d: dict) -> None:
+        # Hot path — called from the UDP thread on every packet. Cheap fast-exit
+        # when not recording, no lock acquisition.
+        if self._fh is None:
+            return
+        with self._lock:
+            if self._fh is None:                    # re-check after lock
+                return
+            row = dict(d)
+            row["t"] = round(time.time() - self._started_at, 4)
+            try:
+                self._fh.write(json.dumps(row) + "\n")
+                self._row_count += 1
+            except (OSError, ValueError):
+                # File closed under us or write failed; stop quietly.
+                try: self._fh.close()
+                except Exception: pass
+                self._fh = None
+
+    def status(self) -> dict:
+        with self._lock:
+            return self._status_locked()
+
+    def _status_locked(self) -> dict:
+        active = self._fh is not None
+        return {
+            "recording": active,
+            "rows": self._row_count if active else 0,
+            "started_at": self._started_at if active else 0,
+            "duration": round(time.time() - self._started_at, 2) if active else 0,
+            "filename": self._path.name if active else None,
+        }
+
+
+_recorder = Recorder()
+
+
+_SLUG_RE = re.compile(r"[^a-zA-Z0-9_-]+")
+def _safe_slug(s: str) -> str:
+    return _SLUG_RE.sub("-", s.strip())[:40]
+
+
+def list_recordings() -> list[dict]:
+    if not RECORDINGS_DIR.exists():
+        return []
+    out = []
+    for p in sorted(RECORDINGS_DIR.glob("*.fhrec"), reverse=True):
+        try:
+            st = p.stat()
+            out.append({"filename": p.name, "size": st.st_size, "mtime": st.st_mtime})
+        except OSError:
+            continue
+    return out
+
+
 def _udp_worker(host: str, port: int) -> None:
     for pkt in ft.listen(host, port):
         d = pkt.to_dict()
         d["connected"] = True
         d["recv_time"] = time.time()
         _set_latest(d)
+        _recorder.write(d)
 
 
 def _demo_worker() -> None:
@@ -82,6 +202,7 @@ def _demo_worker() -> None:
         d["connected"] = True
         d["recv_time"] = time.time()
         _set_latest(d)
+        _recorder.write(d)
         time.sleep(1 / 60)
 
 
@@ -94,6 +215,10 @@ class Handler(BaseHTTPRequestHandler):
     def do_GET(self):
         if self.path == "/stream":
             return self._serve_stream()
+        if self.path == "/record/status":
+            return self._send_json(_recorder.status())
+        if self.path == "/recordings":
+            return self._send_json({"recordings": list_recordings()})
         if self.path in ("/", "/index.html"):
             return self._serve_file("index.html", "text/html; charset=utf-8")
         name = self.path.lstrip("/")
@@ -101,6 +226,30 @@ class Handler(BaseHTTPRequestHandler):
             ctype = "application/javascript" if name.endswith(".js") else "text/css"
             return self._serve_file(name, ctype)
         self.send_error(404)
+
+    def do_POST(self):
+        if self.path.startswith("/record/start"):
+            length = int(self.headers.get("Content-Length") or 0)
+            label = ""
+            if length:
+                try:
+                    body = json.loads(self.rfile.read(length).decode("utf-8") or "{}")
+                    label = (body.get("label") or "").strip()
+                except (ValueError, UnicodeDecodeError):
+                    pass
+            return self._send_json(_recorder.start(label or None))
+        if self.path.startswith("/record/stop"):
+            return self._send_json(_recorder.stop())
+        self.send_error(404)
+
+    def _send_json(self, payload: dict | list):
+        body = json.dumps(payload).encode("utf-8")
+        self.send_response(200)
+        self.send_header("Content-Type", "application/json")
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")
+        self.end_headers()
+        self.wfile.write(body)
 
     def _serve_file(self, name: str, ctype: str):
         path = WEB_DIR / name
