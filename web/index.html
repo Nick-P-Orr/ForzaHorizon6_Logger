@@ -483,15 +483,54 @@ applyConfig();
 /* ---- live stream -------------------------------------------------------- */
 const dot = document.getElementById('dot'), statustext = document.getElementById('statustext'),
       dashbase = document.getElementById('dashbase');
-const es = new EventSource('/stream');
-es.onmessage = ev => {
-  const d = JSON.parse(ev.data);
+
+// Persist values across pause / race-end / stream gaps. We keep a rolling
+// snapshot ("retained") of the last packet that carried real data and render
+// widgets from it, so readouts hold their last value instead of blanking when
+// the game pauses, a race ends, or packets stop arriving. A pause/menu frame
+// (is_race_on 0 with zeroed fields) does NOT overwrite the snapshot — only a
+// "meaningful" packet does — but live connection/identity bits always update.
+let retained = null;       // last merged snapshot we render from
+let lastFreshAt = 0;       // Date.now() of the last meaningful packet
+const STALE_MS = 1500;     // no fresh data for this long => "holding" status
+
+function isMeaningful(d) {
+  return d.is_racing || (d.current_engine_rpm > 0) || (d.speed_kmh > 0.5);
+}
+
+function handlePacket(d) {
+  const now = Date.now();
+  if (retained === null) retained = {};
+
+  if (d.connected) {
+    if (isMeaningful(d)) {
+      Object.assign(retained, d);   // overlay fresh values, keep the rest
+      lastFreshAt = now;
+    } else {
+      // Hold prior values; only reflect live connection/identity bits so the
+      // charts/map stop adding history (they gate on is_racing) during a pause.
+      retained.connected = d.connected;
+      retained.is_racing = d.is_racing;
+      if (d.dash_base != null) retained.dash_base = d.dash_base;
+    }
+  }
+
+  const view = retained || d;
+  const stale = (now - lastFreshAt) > STALE_MS;
+
   dot.classList.toggle('on', !!d.connected);
-  statustext.textContent = !d.connected ? 'waiting for game…' : (d.is_racing ? 'live' : 'in menu / paused');
-  dashbase.textContent = d.dash_base != null ? `dash@${d.dash_base}` : '';
-  for (const w of active.values()) w.update(d);
-};
-es.onerror = () => { statustext.textContent = 'stream lost — retrying…'; };
+  statustext.textContent = !d.connected ? 'waiting for game…'
+                         : d.is_racing  ? 'live'
+                         : stale        ? 'paused — holding last values'
+                                        : 'in menu / paused';
+  dashbase.textContent = view.dash_base != null ? `dash@${view.dash_base}` : '';
+
+  for (const w of active.values()) w.update(view);
+}
+
+const es = new EventSource('/stream');
+es.onmessage = ev => handlePacket(JSON.parse(ev.data));
+es.onerror = () => { statustext.textContent = 'stream lost — holding last values'; };
 </script>
 </body>
 </html>

@@ -225,3 +225,60 @@ The packet has two parts:
 > layout). All fields above were validated against ~53k real packets. If a future
 > update shifts the layout, the Sled fields (including speed and RPM) stay correct;
 > use `capture.py` to pin down the new Dash offset.
+
+## Tech stack
+
+Guiding constraint: **Python 3.8+ standard library only, no pip installs, no
+frontend toolchain.** Clone it and run with the Python that already ships on
+your machine.
+
+### Backend (Python stdlib)
+
+| Module | Role |
+| --- | --- |
+| `socket` | Binds the UDP port Forza streams Data Out to. |
+| `struct` | Unpacks the fixed-size binary C-struct at known byte offsets into named fields. |
+| `http.server` (`ThreadingHTTPServer`) | Serves the dashboard page and the SSE stream — no Flask/FastAPI. |
+| `threading` | One thread receives UDP and writes the latest reading into shared state (lock-guarded); HTTP threads read it. Decoupled so a slow browser never stalls packet capture. |
+| `csv` / `json` | The logger writes CSV (default) or JSONL, one row per packet. |
+| `argparse`, `dataclasses`, `pathlib` | CLI flags, the `TelemetryPacket` dataclass, file paths. |
+
+### Frontend (vanilla, no libraries)
+
+| Tech | Role |
+| --- | --- |
+| One self-contained `web/index.html` | All markup, CSS, and JS inline. No React, no Chart.js, no bundler. |
+| **Server-Sent Events** (`EventSource`) | Browser opens `/stream` and the server pushes JSON updates at 30 Hz over a single long-lived HTTP connection. Simpler than WebSockets, one-directional, which is all we need (server → browser). |
+| **`<canvas>` 2D** | Every gauge, line trace, G-G plot, and track map is hand-drawn with the canvas API. |
+| **`localStorage`** | Remembers which widgets you've toggled on (`fh6_widgets` key). |
+
+### Data flow
+
+```
+Forza Horizon 6
+   │  UDP binary packets (~111 Hz)
+   ▼
+forza_telemetry.py  ── parse() unpacks the C-struct ──┐
+   │                                                  │
+   ├──► server.py ──► /stream (SSE, 30 Hz JSON) ──► web/index.html (canvas widgets)
+   │
+   └──► logger.py ──► CSV / JSONL on disk
+```
+
+### Why these choices
+
+The stdlib-only constraint means it runs anywhere Python does with no setup;
+binary packet parsing is exactly what `struct` is built for; and SSE + canvas
+gives a real-time UI without a JS toolchain. The tradeoff: hand-drawn canvas
+widgets are more code than dropping in a charting library, and SSE is one-way
+(fine for live readout; a future record/replay control channel may want a
+second endpoint).
+
+## TODOs
+
+- Make this usable on an iPad
+- ~~Make values persist when the game pauses or a race ends~~ (done)
+- Make the "last lap time" save the last five laps
+- Overlay the braking and throttle traces onto the track map
+- Telemetry record feature — save a race of telemetry, add a replay feature later
+- G-forces are inverted?
