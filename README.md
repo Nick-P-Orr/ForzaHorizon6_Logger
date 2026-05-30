@@ -41,6 +41,12 @@ python3 server.py --port 5300 --demo # try it with fake data, no game needed
 
 Then open <http://localhost:8000>.
 
+**On iPad:** open the dashboard URL in Safari, then **Share → Add to Home Screen**.
+The app launches full-screen with no browser chrome, honors notch / Dynamic Island
+safe areas, has 44 pt touch targets in the ☰ menu, and you can swipe the drawer
+left to close it. Grid breakpoints adapt at iPad portrait width (wide cards span
+the full row) and phone width (single column).
+
 Each value uses a visualization suited to it:
 
 | Widget type | Used for |
@@ -277,7 +283,8 @@ second endpoint).
 
 ## TODOs
 
-- Make this usable on an iPad
+- ~~Make this usable on an iPad~~ (done — responsive grid, 44 pt touch targets,
+  hover-guards, safe-area insets, "Add to Home Screen" runs full-screen as a PWA)
 - ~~Make values persist when the game pauses or a race ends~~ (done)
 - ~~Make the "last lap time" save the last five laps~~ (done)
 - ~~Overlay the braking and throttle traces onto the track map~~ (done)

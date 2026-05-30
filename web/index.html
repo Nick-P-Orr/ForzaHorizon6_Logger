@@ -2,7 +2,13 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, user-scalable=no">
+<meta name="theme-color" content="#0c0f14">
+<!-- iPad / iOS: "Add to Home Screen" gives a full-screen, app-like experience. -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="FH6 Telemetry">
+<meta name="mobile-web-app-capable" content="yes">
 <title>Forza Horizon 6 — Live Telemetry</title>
 <style>
   :root {
@@ -11,20 +17,36 @@
     --good: #36d399; --blue: #4cc2ff; --amber: #ffb454;
   }
   * { box-sizing: border-box; }
+  html, body {
+    /* Prevent rubber-band scroll on iPad; keep the dashboard locked like an app. */
+    overscroll-behavior: none;
+    -webkit-text-size-adjust: 100%;
+  }
   body {
     margin: 0; background: var(--bg); color: var(--txt);
     font: 14px/1.4 -apple-system, "Segoe UI", Roboto, sans-serif;
+    /* Disable iOS double-tap zoom / 300ms tap delay on interactive elements. */
+    touch-action: manipulation;
+    /* Honor the safe-area on notched / Dynamic-Island iPads when used as a PWA. */
+    padding-left: env(safe-area-inset-left);
+    padding-right: env(safe-area-inset-right);
   }
   header {
     display: flex; align-items: center; gap: 14px; position: sticky; top: 0; z-index: 20;
     padding: 10px 16px; background: var(--panel); border-bottom: 1px solid var(--line);
+    /* When PWA status bar is translucent, push the header below it. */
+    padding-top: max(10px, env(safe-area-inset-top));
   }
   header h1 { font-size: 15px; margin: 0; font-weight: 600; letter-spacing: .5px; }
   .burger {
     background: var(--bg); border: 1px solid var(--line); color: var(--txt);
-    width: 38px; height: 34px; border-radius: 8px; cursor: pointer; font-size: 16px;
+    /* 44pt min hit area (Apple HIG touch target). */
+    min-width: 44px; height: 44px; border-radius: 8px; cursor: pointer; font-size: 18px;
+    -webkit-tap-highlight-color: transparent;
   }
-  .burger:hover { border-color: var(--accent); }
+  /* :hover sticks after a touch — only apply on real pointer devices. */
+  @media (hover: hover) { .burger:hover { border-color: var(--accent); } }
+  .burger:active { border-color: var(--accent); }
   .status { display: flex; align-items: center; gap: 8px; margin-left: auto; color: var(--dim); font-size: 13px; }
   .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--warn); }
   .dot.on { background: var(--good); box-shadow: 0 0 8px var(--good); }
@@ -33,12 +55,25 @@
     display: grid; gap: 14px; padding: 16px;
     grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
     max-width: 1280px; margin: 0 auto; align-items: start;
+    /* Account for bottom safe-area when in landscape PWA mode. */
+    padding-bottom: max(16px, env(safe-area-inset-bottom));
   }
   .card {
     background: var(--panel); border: 1px solid var(--line);
     border-radius: 12px; padding: 14px; position: relative; min-width: 0;
   }
   .card.wide { grid-column: span 2; }
+  /* iPad portrait (~768px) only fits ~2-3 columns, so wide cards span the full row
+     rather than awkwardly half-spanning. */
+  @media (max-width: 900px) {
+    .grid { grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); }
+    .card.wide { grid-column: 1 / -1; }
+  }
+  /* Phone-ish widths: single column for readability. */
+  @media (max-width: 600px) {
+    .grid { grid-template-columns: 1fr; padding: 10px; }
+    .card.wide { grid-column: 1; }
+  }
   .card h2 {
     font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
     color: var(--dim); margin: 0 0 10px; display: flex; justify-content: space-between;
@@ -98,9 +133,13 @@
               transition: opacity .2s; z-index: 30; }
   .backdrop.open { opacity: 1; pointer-events: auto; }
   .drawer {
-    position: fixed; top: 0; left: 0; bottom: 0; width: 320px; max-width: 85vw; z-index: 40;
+    position: fixed; top: 0; left: 0; bottom: 0; width: 340px; max-width: 85vw; z-index: 40;
     background: var(--panel); border-right: 1px solid var(--line);
     transform: translateX(-100%); transition: transform .22s ease; overflow-y: auto;
+    -webkit-overflow-scrolling: touch;            /* momentum scroll on iOS */
+    overscroll-behavior: contain;                 /* don't propagate scroll to body */
+    padding-top: env(safe-area-inset-top);
+    padding-bottom: env(safe-area-inset-bottom);
   }
   .drawer.open { transform: translateX(0); }
   .drawer header { position: sticky; top: 0; }
@@ -108,18 +147,24 @@
   .drawer .actions { display: flex; gap: 8px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
   .drawer .actions button {
     flex: 1; background: var(--bg); border: 1px solid var(--line); color: var(--txt);
-    padding: 7px 0; border-radius: 7px; cursor: pointer; font-size: 12px;
+    padding: 10px 0; border-radius: 7px; cursor: pointer; font-size: 13px;
+    min-height: 38px; -webkit-tap-highlight-color: transparent;
   }
-  .drawer .actions button:hover { border-color: var(--accent); }
+  @media (hover: hover) { .drawer .actions button:hover { border-color: var(--accent); } }
+  .drawer .actions button:active { border-color: var(--accent); background: var(--line); }
   .group { padding: 6px 0; }
   .group > .gh { padding: 10px 16px 4px; color: var(--accent); font-size: 11px;
                  text-transform: uppercase; letter-spacing: 1px; }
-  label.item { display: flex; align-items: center; gap: 10px; padding: 7px 16px; cursor: pointer; }
-  label.item:hover { background: var(--bg); }
-  label.item input { accent-color: var(--accent); width: 16px; height: 16px; }
+  /* Bigger touch target for each toggle row (44pt iOS HIG). */
+  label.item { display: flex; align-items: center; gap: 12px; padding: 11px 16px; cursor: pointer;
+               min-height: 44px; -webkit-tap-highlight-color: transparent; }
+  @media (hover: hover) { label.item:hover { background: var(--bg); } }
+  label.item:active { background: var(--bg); }
+  label.item input { accent-color: var(--accent); width: 20px; height: 20px; }
   label.item .nm { flex: 1; }
   label.item .ty { color: var(--dim); font-size: 11px; }
-  .closeX { background: none; border: 0; color: var(--dim); font-size: 20px; cursor: pointer; margin-left: auto; }
+  .closeX { background: none; border: 0; color: var(--dim); font-size: 22px; cursor: pointer; margin-left: auto;
+            min-width: 44px; min-height: 44px; -webkit-tap-highlight-color: transparent; }
 </style>
 </head>
 <body>
@@ -549,6 +594,16 @@ const closeDrawer = () => { drawer.classList.remove('open'); backdrop.classList.
 document.getElementById('burger').onclick = openDrawer;
 document.getElementById('closeX').onclick = closeDrawer;
 backdrop.onclick = closeDrawer;
+
+// Touch: swipe the drawer left to close (iPad-friendly).
+let _touchStartX = null;
+drawer.addEventListener('touchstart', e => { _touchStartX = e.touches[0].clientX; }, {passive:true});
+drawer.addEventListener('touchend', e => {
+  if (_touchStartX == null) return;
+  const dx = (e.changedTouches[0].clientX - _touchStartX);
+  if (dx < -60) closeDrawer();
+  _touchStartX = null;
+}, {passive:true});
 document.getElementById('actDefaults').onclick = () => { enabled = new Set(DEFAULTS); saveCfg(enabled); buildMenu(); applyConfig(); };
 document.getElementById('actAll').onclick = () => { enabled = new Set(FIELDS.map(f=>f.id)); saveCfg(enabled); buildMenu(); applyConfig(); };
 document.getElementById('actNone').onclick = () => { enabled = new Set(); saveCfg(enabled); buildMenu(); applyConfig(); };
