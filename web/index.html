@@ -9,6 +9,9 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="FH6 Telemetry">
 <meta name="mobile-web-app-capable" content="yes">
+<link rel="manifest" href="manifest.json">
+<link rel="icon" href="icon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="icon.svg">
 <title>Forza Horizon 6 — Live Telemetry</title>
 <style>
   :root {
@@ -78,12 +81,13 @@
     font-size: 11px; text-transform: uppercase; letter-spacing: 1px;
     color: var(--dim); margin: 0 0 10px; display: flex; justify-content: space-between;
   }
-  .card h2 .sub { color: var(--line); font-weight: 600; }
+  .card h2 .sub { color: var(--dim); font-weight: 600; text-transform: none; letter-spacing: 0; }
   canvas { display: block; width: 100%; }
 
   .big { font-size: 84px; font-weight: 800; line-height: 1; color: var(--accent); text-align: center; }
   .bigval { font-size: 40px; font-weight: 700; font-variant-numeric: tabular-nums; text-align: center; }
   .bigval .u { font-size: 14px; color: var(--dim); font-weight: 500; margin-left: 4px; }
+  .deltasub { text-align: center; color: var(--dim); font-size: 12px; margin-top: 4px; }
 
   .bars { display: flex; gap: 16px; align-items: flex-end; height: 140px; justify-content: center; }
   .bar-wrap { text-align: center; }
@@ -166,7 +170,7 @@
   .closeX { background: none; border: 0; color: var(--dim); font-size: 22px; cursor: pointer; margin-left: auto;
             min-width: 44px; min-height: 44px; -webkit-tap-highlight-color: transparent; }
 
-  /* Record button in header */
+  /* Record + replay buttons in header */
   .recbtn {
     background: var(--bg); border: 1px solid var(--line); color: var(--txt);
     display: flex; align-items: center; gap: 8px;
@@ -183,6 +187,52 @@
     0%,100% { box-shadow: 0 0 0 0 rgba(255,93,93,0.7); opacity: 1; }
     50%     { box-shadow: 0 0 0 6px rgba(255,93,93,0);   opacity: 0.6; }
   }
+
+  /* Recordings / replay panel */
+  .panel {
+    position: fixed; top: calc(56px + env(safe-area-inset-top)); right: 12px; z-index: 40;
+    width: 360px; max-width: calc(100vw - 24px); max-height: 60vh; overflow-y: auto;
+    background: var(--panel); border: 1px solid var(--line); border-radius: 12px;
+    box-shadow: 0 10px 30px rgba(0,0,0,.5);
+  }
+  .panel[hidden] { display: none; }
+  .panel .panel-h { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+                    padding: 12px 14px; border-bottom: 1px solid var(--line);
+                    font-size: 12px; text-transform: uppercase; letter-spacing: 1px; color: var(--dim); }
+  .panel .autorec { display: flex; align-items: center; gap: 6px; text-transform: none;
+                    letter-spacing: 0; font-size: 12px; color: var(--txt); cursor: pointer; }
+  .panel .autorec input { accent-color: var(--accent); width: 16px; height: 16px; }
+  .recl .rrow { display: flex; align-items: center; gap: 10px; padding: 11px 14px; cursor: pointer;
+                border-top: 1px solid var(--line); min-height: 44px;
+                -webkit-tap-highlight-color: transparent; }
+  .recl .rrow:first-child { border-top: 0; }
+  @media (hover: hover) { .recl .rrow:hover { background: var(--bg); } }
+  .recl .rrow:active { background: var(--bg); }
+  .recl .rrow .fn { flex: 1; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .recl .rrow .sz { color: var(--dim); font-size: 11px; font-variant-numeric: tabular-nums; }
+  .recl .none { color: var(--dim); text-align: center; padding: 20px; font-size: 12px; }
+
+  /* Replay transport bar */
+  .replbar {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 35;
+    display: flex; align-items: center; gap: 10px;
+    padding: 10px 16px; padding-bottom: max(10px, env(safe-area-inset-bottom));
+    background: var(--panel); border-top: 1px solid var(--accent);
+  }
+  .replbar[hidden] { display: none; }
+  .replbar button {
+    background: var(--bg); border: 1px solid var(--line); color: var(--txt);
+    min-width: 44px; min-height: 38px; border-radius: 8px; cursor: pointer; font-size: 15px;
+    -webkit-tap-highlight-color: transparent;
+  }
+  @media (hover: hover) { .replbar button:hover { border-color: var(--accent); } }
+  .replbar input[type=range] { flex: 1; accent-color: var(--accent); min-height: 38px; }
+  .replbar .rtime { color: var(--dim); font-size: 12px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .replbar select { background: var(--bg); border: 1px solid var(--line); color: var(--txt);
+                    border-radius: 8px; min-height: 38px; padding: 0 6px; font-size: 13px; }
+  .replbar .rfile { color: var(--accent); font-size: 12px; max-width: 180px;
+                    overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  @media (max-width: 600px) { .replbar .rfile { display: none; } }
 </style>
 </head>
 <body>
@@ -192,6 +242,7 @@
   <button class="recbtn" id="recbtn" title="Record telemetry to file">
     <span class="reccircle"></span><span id="reclabel">Record</span><span class="recinfo" id="recinfo"></span>
   </button>
+  <button class="recbtn" id="libbtn" title="Recordings &amp; replay">▶</button>
   <div class="status">
     <span id="dashbase"></span>
     <span class="dot" id="dot"></span>
@@ -216,24 +267,76 @@
   <div id="menu"></div>
 </aside>
 
+<div class="panel" id="replpanel" hidden>
+  <div class="panel-h">
+    <span>Recordings</span>
+    <label class="autorec"><input type="checkbox" id="autorec"> auto-record races</label>
+  </div>
+  <div class="recl" id="recllist"><div class="none">Loading…</div></div>
+</div>
+
+<div class="replbar" id="replbar" hidden>
+  <button id="rpPlay" title="Play / pause">⏸</button>
+  <input type="range" id="rpScrub" min="0" max="100" step="0.1" value="0">
+  <span class="rtime" id="rpTime">0:00 / 0:00</span>
+  <select id="rpSpeed" title="Playback speed">
+    <option value="0.5">0.5×</option>
+    <option value="1" selected>1×</option>
+    <option value="2">2×</option>
+    <option value="4">4×</option>
+  </select>
+  <span class="rfile" id="rpFile"></span>
+  <button id="rpStop" title="Stop replay">✕</button>
+</div>
+
 <script>
 const css = v => getComputedStyle(document.documentElement).getPropertyValue(v).trim();
+// Resolve the theme palette ONCE — getComputedStyle per frame was the single
+// biggest render cost (dozens of forced style reads × 30 Hz × every widget).
+const PALETTE = {};
+for (const v of ['--bg','--panel','--line','--txt','--dim','--accent','--warn','--good','--blue','--amber'])
+  PALETTE[v] = css(v);
+const P = v => PALETTE[v] || css(v);
+
 const fmt = (v, d=0) => v == null || Number.isNaN(v) ? '–' : Number(v).toFixed(d);
 const CORNERS = [['FL','fl'],['FR','fr'],['RL','rl'],['RR','rr']];
+
+// Retina-sharp canvases: back the bitmap at devicePixelRatio (capped at 2),
+// draw in logical units via a fixed transform.
+const DPR = Math.min(2, window.devicePixelRatio || 1);
+function mkCanvas(w, h) {
+  const cv = document.createElement('canvas');
+  cv.width = Math.round(w * DPR); cv.height = Math.round(h * DPR);
+  cv._w = w; cv._h = h;
+  return cv;
+}
+function ctx2d(cv) {
+  const ctx = cv.getContext('2d');
+  ctx.setTransform(DPR, 0, 0, DPR, 0, 0);
+  return [ctx, cv._w, cv._h];
+}
 
 function fmtTime(s) {
   if (s == null || s <= 0) return '–';
   const m = Math.floor(s / 60), sec = s - m * 60;
   return `${m}:${sec.toFixed(3).padStart(6, '0')}`;
 }
+function fmtClock(s) {              // m:ss for replay scrub / recording badge
+  if (!s || s < 0) return '0:00';
+  const m = Math.floor(s / 60), sec = Math.floor(s - m * 60);
+  return `${m}:${String(sec).padStart(2, '0')}`;
+}
+// FH6 tire temps are reported in °F (confirmed against a real session: moving
+// tires read ~165 ≈ 74 °C; session max 224 ≈ 107 °C — sane in °F, absurd in °C).
+const f2c = v => (v - 32) / 1.8;
 function tireTempColor(v) {
-  if (v == null) return css('--dim');
-  const t = Math.max(0, Math.min(1, v / 240));           // FH6 temps run high; relative heat scale
+  if (v == null) return P('--dim');
+  const t = Math.max(0, Math.min(1, v / 240));           // relative heat scale (°F)
   const hue = 210 - 210 * t;                              // blue(cool) -> red(hot)
   return `hsl(${hue}, 80%, 60%)`;
 }
 function slipColor(v) {
-  if (v == null) return css('--dim');
+  if (v == null) return P('--dim');
   const t = Math.max(0, Math.min(1, Math.abs(v)));        // 0 grip (green) -> 1+ (red)
   const hue = 140 - 140 * t;
   return `hsl(${hue}, 75%, 58%)`;
@@ -241,24 +344,24 @@ function slipColor(v) {
 
 /* ---- canvas primitives -------------------------------------------------- */
 function drawGauge(cv, value, max, unit, color) {
-  const ctx = cv.getContext('2d'), w = cv.width, h = cv.height;
+  const [ctx, w, h] = ctx2d(cv);
   const cx = w/2, cy = h*0.78, r = Math.min(w, h)*0.62, A = Math.PI*0.8, B = Math.PI*2.2;
   ctx.clearRect(0,0,w,h); ctx.lineWidth = 12; ctx.lineCap = 'round';
-  ctx.strokeStyle = css('--line'); ctx.beginPath(); ctx.arc(cx,cy,r,A,B); ctx.stroke();
+  ctx.strokeStyle = P('--line'); ctx.beginPath(); ctx.arc(cx,cy,r,A,B); ctx.stroke();
   const f = Math.max(0, Math.min(1, value/max));
   ctx.strokeStyle = color; ctx.beginPath(); ctx.arc(cx,cy,r,A,A+(B-A)*f); ctx.stroke();
-  ctx.fillStyle = css('--txt'); ctx.textAlign = 'center'; ctx.font = '700 32px sans-serif';
+  ctx.fillStyle = P('--txt'); ctx.textAlign = 'center'; ctx.font = '700 32px sans-serif';
   ctx.fillText(Math.round(value), cx, cy-2);
-  ctx.fillStyle = css('--dim'); ctx.font = '12px sans-serif'; ctx.fillText(unit, cx, cy+15);
+  ctx.fillStyle = P('--dim'); ctx.font = '12px sans-serif'; ctx.fillText(unit, cx, cy+15);
 }
 function drawChart(cv, pts, color, opts={}) {
-  const ctx = cv.getContext('2d'), w = cv.width, h = cv.height, pad = 6;
+  const [ctx, w, h] = ctx2d(cv); const pad = 6;
   ctx.clearRect(0,0,w,h);
-  ctx.strokeStyle = css('--line'); ctx.lineWidth = 1;
+  ctx.strokeStyle = P('--line'); ctx.lineWidth = 1;
   let lo = opts.min, hi = opts.max;
-  if (lo == null || hi == null) {                         // autoscale
-    const vals = pts.filter(v => v != null);
-    lo = Math.min(...vals, 0); hi = Math.max(...vals, 1);
+  if (lo == null || hi == null) {                         // autoscale (loop, not spread)
+    lo = 0; hi = 1;
+    for (const v of pts) { if (v == null) continue; if (v < lo) lo = v; if (v > hi) hi = v; }
     if (hi === lo) hi = lo + 1;
   }
   const zeroY = h - pad - ((0 - lo)/(hi - lo))*(h - 2*pad);
@@ -267,29 +370,50 @@ function drawChart(cv, pts, color, opts={}) {
   if (pts.length < 2) return;
   const n = pts.length;
   ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
-  pts.forEach((p, i) => {
+  for (let i = 0; i < n; i++) {
     const x = (i/(n-1))*w;
-    const y = h - pad - (Math.max(0, Math.min(1, (p - lo)/(hi - lo))))*(h - 2*pad);
+    const y = h - pad - (Math.max(0, Math.min(1, (pts[i] - lo)/(hi - lo))))*(h - 2*pad);
     i ? ctx.lineTo(x,y) : ctx.moveTo(x,y);
-  });
+  }
   ctx.stroke();
 }
-function drawGG(cv, latG, longG) {
-  const ctx = cv.getContext('2d'), w = cv.width, h = cv.height;
+function drawGG(cv, latG, longG, hist) {
+  const [ctx, w, h] = ctx2d(cv);
   const cx = w/2, cy = h/2, R = Math.min(w,h)/2 - 8, SCALE = 1.5; // 1.5g full scale
   ctx.clearRect(0,0,w,h);
-  ctx.strokeStyle = css('--line'); ctx.lineWidth = 1;
+  ctx.strokeStyle = P('--line'); ctx.lineWidth = 1;
   [0.5, 1].forEach(g => { ctx.beginPath(); ctx.arc(cx,cy,R*g/SCALE,0,7); ctx.stroke(); });
   ctx.beginPath(); ctx.moveTo(cx-R,cy); ctx.lineTo(cx+R,cy);
   ctx.moveTo(cx,cy-R); ctx.lineTo(cx,cy+R); ctx.stroke();
-  const px = cx + Math.max(-1, Math.min(1, latG/SCALE))*R;
-  const py = cy - Math.max(-1, Math.min(1, longG/SCALE))*R;
-  ctx.fillStyle = css('--accent'); ctx.beginPath(); ctx.arc(px,py,5,0,7); ctx.fill();
-  ctx.fillStyle = css('--dim'); ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
+  const PX = g => cx + Math.max(-1, Math.min(1, g/SCALE))*R;
+  const PY = g => cy - Math.max(-1, Math.min(1, g/SCALE))*R;
+  // Fading scatter of the recent grip history (oldest faintest).
+  if (hist && hist.length >= 2) {
+    const n = hist.length / 2;
+    for (let i = 0; i < n; i++) {
+      ctx.globalAlpha = 0.05 + 0.4 * (i / n);
+      ctx.fillStyle = P('--blue');
+      ctx.beginPath(); ctx.arc(PX(hist[2*i]), PY(hist[2*i+1]), 2, 0, 7); ctx.fill();
+    }
+    ctx.globalAlpha = 1;
+  }
+  ctx.fillStyle = P('--accent'); ctx.beginPath(); ctx.arc(PX(latG), PY(longG), 5, 0, 7); ctx.fill();
+  ctx.fillStyle = P('--dim'); ctx.font = '10px sans-serif'; ctx.textAlign = 'center';
   ctx.fillText(`${Math.hypot(latG,longG).toFixed(2)} g`, cx, h-4);
 }
+
+// Trail-segment colors are quantized into a few buckets and resolved ONCE when
+// the point is pushed, so drawMap can batch runs of same-colored segments into
+// a single stroked path instead of one beginPath/stroke per segment.
+const BRAKE_COLS = [0,1,2,3].map(q => `rgba(255, 93, 93, ${(0.45 + 0.55 * Math.min(1, (q*64+32)/255)).toFixed(2)})`);
+const THROT_COLS = [0,1,2,3].map(q => `rgba(54, 211, 153, ${(0.45 + 0.55 * Math.min(1, (q*64+32)/255)).toFixed(2)})`);
+function inputColor(t, b) {
+  if (b > 30) return BRAKE_COLS[Math.min(3, (b/64)|0)];   // brake takes precedence
+  if (t > 30) return THROT_COLS[Math.min(3, (t/64)|0)];
+  return P('--line');                                     // coast
+}
 function drawMap(cv, trail) {
-  const ctx = cv.getContext('2d'), w = cv.width, h = cv.height, pad = 10;
+  const [ctx, w, h] = ctx2d(cv); const pad = 10;
   ctx.clearRect(0,0,w,h);
   if (trail.length < 2) return;
   let minX=Infinity,maxX=-Infinity,minZ=Infinity,maxZ=-Infinity;
@@ -297,47 +421,74 @@ function drawMap(cv, trail) {
   const sx = (maxX-minX)||1, sz = (maxZ-minZ)||1, s = Math.min((w-2*pad)/sx, (h-2*pad)/sz);
   const X = x => pad + (x-minX)*s, Y = z => h - pad - (z-minZ)*s;
 
-  // Color each trail segment by driver input at the segment's START point:
-  //  - red intensity for brake (takes precedence — it's the more interesting signal)
-  //  - green intensity for throttle
-  //  - dim gray for coasting (no significant input)
-  // Bucketing into a few intensity buckets keeps the segment count manageable
-  // while letting partial-throttle / trail-braking still read visually.
   ctx.lineWidth = 2.5; ctx.lineCap = 'round';
-  const dim = css('--line');
-  function segColor(p) {
-    const t = p.t ?? 0, b = p.b ?? 0;
-    if (b > 30) return `rgba(255, 93, 93, ${0.45 + 0.55 * Math.min(1, b/255)})`;   // brake
-    if (t > 30) return `rgba(54, 211, 153, ${0.45 + 0.55 * Math.min(1, t/255)})`;  // throttle
-    return dim;                                                                    // coast
-  }
-  for (let i = 1; i < trail.length; i++) {
-    const a = trail[i-1], c = trail[i];
-    ctx.strokeStyle = segColor(a);
-    ctx.beginPath(); ctx.moveTo(X(a.x), Y(a.z)); ctx.lineTo(X(c.x), Y(c.z)); ctx.stroke();
+  const n = trail.length;
+  let i = 1;
+  while (i < n) {
+    const col = trail[i-1].c;                              // precomputed at push time
+    ctx.strokeStyle = col;
+    ctx.beginPath(); ctx.moveTo(X(trail[i-1].x), Y(trail[i-1].z));
+    do { ctx.lineTo(X(trail[i].x), Y(trail[i].z)); i++; } while (i < n && trail[i-1].c === col);
+    ctx.stroke();
   }
 
   // Current position dot
-  const last = trail[trail.length-1];
-  ctx.fillStyle = css('--accent'); ctx.beginPath(); ctx.arc(X(last.x), Y(last.z), 4, 0, 7); ctx.fill();
+  const last = trail[n-1];
+  ctx.fillStyle = P('--accent'); ctx.beginPath(); ctx.arc(X(last.x), Y(last.z), 4, 0, 7); ctx.fill();
 
   // Legend (compact, top-left)
   ctx.font = '10px sans-serif'; ctx.textBaseline = 'middle';
   const legend = [
-    [css('--good'), 'throttle'],
-    [css('--warn'), 'brake'],
-    [dim,           'coast'],
+    [P('--good'), 'throttle'],
+    [P('--warn'), 'brake'],
+    [P('--line'), 'coast'],
   ];
   let lx = pad, ly = pad + 4;
   for (const [col, lbl] of legend) {
     ctx.fillStyle = col; ctx.fillRect(lx, ly - 4, 10, 3);
-    ctx.fillStyle = css('--dim'); ctx.fillText(lbl, lx + 14, ly - 2);
+    ctx.fillStyle = P('--dim'); ctx.fillText(lbl, lx + 14, ly - 2);
     lx += ctx.measureText(lbl).width + 32;
   }
+  ctx.textBaseline = 'alphabetic';
+}
+function drawDyno(cv, bins, maxRpm, subEl) {
+  const [ctx, w, h] = ctx2d(cv); const pad = 8;
+  ctx.clearRect(0,0,w,h);
+  const pts = [...bins.entries()].sort((a,b) => a[0]-b[0]);
+  if (pts.length < 3) {
+    ctx.fillStyle = P('--dim'); ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+    ctx.fillText('hold full throttle through the rev range to sample', w/2, h/2);
+    if (subEl) subEl.textContent = '';
+    return;
+  }
+  let pMax=0, tMax=0, pAt=0, tAt=0;
+  for (const [r,e] of pts) { if (e.p > pMax) { pMax = e.p; pAt = r; } if (e.tq > tMax) { tMax = e.tq; tAt = r; } }
+  const rLo = pts[0][0], rHi = Math.max(maxRpm||0, pts[pts.length-1][0]);
+  const X = r => pad + (r - rLo)/((rHi - rLo) || 1)*(w - 2*pad);
+  const line = (get, max, color) => {
+    if (max <= 0) return;
+    ctx.strokeStyle = color; ctx.lineWidth = 2; ctx.beginPath();
+    pts.forEach(([r,e], i) => {
+      const y = h - pad - Math.max(0, Math.min(1, get(e)/max))*(h - 2*pad);
+      i ? ctx.lineTo(X(r), y) : ctx.moveTo(X(r), y);
+    });
+    ctx.stroke();
+  };
+  line(e => e.p,  pMax, P('--accent'));   // power
+  line(e => e.tq, tMax, P('--blue'));     // torque
+  ctx.font = '10px sans-serif'; ctx.textAlign = 'left';
+  ctx.fillStyle = P('--accent'); ctx.fillText('power', pad, pad + 4);
+  ctx.fillStyle = P('--blue');   ctx.fillText('torque', pad + 44, pad + 4);
+  if (subEl) subEl.textContent =
+    `${(pMax/1000).toFixed(0)} kW @ ${pAt} · ${tMax.toFixed(0)} Nm @ ${tAt}`;
 }
 
 /* ---- field catalog: every Forza value + how to visualize it -------------- */
 const MAXPTS = 1200;
+// Amortized history trim: allow 25% overflow, then cut back in one splice —
+// shift() per frame on a 1000+ element array is O(n) every frame.
+function trim(arr, cap) { if (arr.length > cap * 1.25) arr.splice(0, arr.length - cap); }
+
 const FIELDS = [
   // Speed & Engine
   { id:'speed_gauge', g:'Speed & Engine', label:'Speed (gauge)', type:'gauge', def:true,
@@ -356,6 +507,7 @@ const FIELDS = [
   // Drivetrain
   { id:'power', g:'Drivetrain', label:'Power', type:'gauge', def:true, read:d=>d.power/1000, max:600, unit:'kW', color:'--amber' },
   { id:'torque', g:'Drivetrain', label:'Torque', type:'gauge', def:true, read:d=>d.torque, max:800, unit:'Nm', color:'--amber' },
+  { id:'dyno', g:'Drivetrain', label:'Power curve (full-throttle)', type:'dyno', wide:true },
   { id:'boost', g:'Drivetrain', label:'Boost', type:'bidir', def:true, read:d=>d.boost, span:30, unit:'' },
   { id:'fuel', g:'Drivetrain', label:'Fuel', type:'bar', def:true, read:d=>d.fuel*100, max:100, unit:'%', color:'--good' },
 
@@ -370,7 +522,8 @@ const FIELDS = [
   { id:'driving_line', g:'Inputs', label:'Driving line', type:'value', read:d=>d.normalized_driving_line },
 
   // Tires & Wheels
-  { id:'tire_temp', g:'Tires & Wheels', label:'Tire temps', type:'wheels', def:true, base:'tire_temp', dec:0, color:tireTempColor },
+  { id:'tire_temp', g:'Tires & Wheels', label:'Tire temps (°F)', type:'wheels', def:true, base:'tire_temp', dec:0,
+    color:tireTempColor, sub:v => v==null ? '' : `${f2c(v).toFixed(0)}°C` },
   { id:'tire_slip_ratio', g:'Tires & Wheels', label:'Slip ratio', type:'wheels', base:'tire_slip_ratio', dec:2, color:slipColor },
   { id:'tire_slip_angle', g:'Tires & Wheels', label:'Slip angle', type:'wheels', base:'tire_slip_angle', dec:2, color:slipColor },
   { id:'tire_combined_slip', g:'Tires & Wheels', label:'Combined slip', type:'wheels', base:'tire_combined_slip', dec:2, color:slipColor },
@@ -400,6 +553,7 @@ const FIELDS = [
     parts:[['X',d=>d.position_x],['Y',d=>d.position_y],['Z',d=>d.position_z]] },
 
   // Lap & Race
+  { id:'lap_delta', g:'Lap & Race', label:'Lap delta', type:'delta', def:true },
   { id:'current_lap', g:'Lap & Race', label:'Current lap', type:'time', read:d=>d.current_lap },
   { id:'last_lap', g:'Lap & Race', label:'Last 5 laps', type:'laps', def:true, keep:5 },
   { id:'best_lap', g:'Lap & Race', label:'Best lap', type:'time', read:d=>d.best_lap },
@@ -407,6 +561,7 @@ const FIELDS = [
   { id:'lap_number', g:'Lap & Race', label:'Lap number', type:'value', read:d=>d.lap_number },
   { id:'race_position', g:'Lap & Race', label:'Race position', type:'value', read:d=>d.race_position },
   { id:'distance_traveled', g:'Lap & Race', label:'Distance', type:'value', read:d=>d.distance_traveled, unit:'m', dec:0 },
+  { id:'launch', g:'Lap & Race', label:'Launch timing', type:'launch' },
 
   // Car Info
   { id:'car_class', g:'Car Info', label:'Class', type:'enum', read:d=>d.car_class, map:{0:'D',1:'C',2:'B',3:'A',4:'S1',5:'S2',6:'S2',7:'X'} },
@@ -416,6 +571,7 @@ const FIELDS = [
   { id:'car_ordinal', g:'Car Info', label:'Car ID', type:'value', read:d=>d.car_ordinal },
 
   // Status
+  { id:'session_stats', g:'Status', label:'Session stats', type:'stats' },
   { id:'is_racing', g:'Status', label:'Race active', type:'bool', read:d=>d.is_racing },
   { id:'dash_base', g:'Status', label:'Dash offset', type:'value', read:d=>d.dash_base },
   { id:'timestamp_ms', g:'Status', label:'Game time', type:'value', read:d=>d.timestamp_ms, unit:'ms' },
@@ -428,23 +584,24 @@ function makeWidget(f) {
   const card = document.createElement('div');
   card.className = 'card' + (f.wide ? ' wide' : '');
   const h2 = document.createElement('h2');
-  h2.innerHTML = `<span>${f.label}</span><span class="sub" id="sub"></span>`;
+  h2.innerHTML = `<span>${f.label}</span><span class="sub"></span>`;
   card.appendChild(h2);
+  const sub = h2.querySelector('.sub');
   const body = document.createElement('div');
   card.appendChild(body);
   let update;
 
   if (f.type === 'gauge') {
-    const cv = Object.assign(document.createElement('canvas'), {width:220, height:150});
+    const cv = mkCanvas(220, 150);
     body.appendChild(cv);
-    update = d => drawGauge(cv, f.read(d)||0, resolve(f.max,d), f.unit, css(resolve(f.color,d)||'--accent'));
+    update = d => drawGauge(cv, f.read(d)||0, resolve(f.max,d), f.unit, P(resolve(f.color,d)||'--accent'));
   } else if (f.type === 'line') {
-    const cv = Object.assign(document.createElement('canvas'), {width:600, height:130});
+    const cv = mkCanvas(600, 130);
     body.appendChild(cv); const hist = []; const cap = f.pts || MAXPTS;
     update = d => {
       const v = f.read(d); if (v != null && d.is_racing) hist.push(v);
-      if (hist.length > cap) hist.shift();
-      drawChart(cv, hist, css(f.color), {min:f.min, max:resolve(f.max,d)});
+      trim(hist, cap);
+      drawChart(cv, hist, P(f.color), {min:f.min, max:resolve(f.max,d)});
     };
   } else if (f.type === 'big') {
     const e = document.createElement('div'); e.className = 'big'; e.textContent = '–';
@@ -469,7 +626,7 @@ function makeWidget(f) {
     const lst = body.querySelector('#lst');
     const keep = f.keep || 5;
     const history = []; // [{n: lap#, t: seconds}]
-    let prevLapNum = null, prevLastLap = null;
+    let prevLapNum = null, prevLastLap = null, dirty = false;
     update = d => {
       const cur = d.lap_number ?? null, last = d.last_lap ?? 0;
       const isNewLap = last > 0 && (
@@ -481,15 +638,170 @@ function makeWidget(f) {
         const completedNum = cur != null ? cur - 1 : (history.length ? history[history.length-1].n + 1 : 1);
         history.push({ n: completedNum, t: last });
         if (history.length > keep) history.shift();
+        dirty = true;
       }
       prevLapNum = cur; prevLastLap = last;
 
-      if (!history.length) { lst.innerHTML = '<div class="empty">No laps yet</div>'; return; }
+      if (!dirty || !history.length) return;   // re-render only when a lap lands
+      dirty = false;
       const best = Math.min(...history.map(h => h.t));
       lst.innerHTML = history.slice().reverse().map((h, i) => {
         const cls = (h.t === best ? 'best ' : '') + (i === 0 ? 'latest' : '');
         return `<div class="lap ${cls}"><span class="n">Lap ${h.n}</span><span class="t">${fmtTime(h.t)}</span></div>`;
       }).join('');
+    };
+  } else if (f.type === 'delta') {
+    // Live gap to your best lap at the same distance-into-lap. Builds a
+    // (distance, time) curve for each lap; when a lap completes faster than
+    // the stored best, its curve becomes the new reference.
+    const e = document.createElement('div'); e.className = 'bigval'; e.textContent = '–';
+    const note = document.createElement('div'); note.className = 'deltasub';
+    note.textContent = 'complete a lap to set a reference';
+    body.appendChild(e); body.appendChild(note);
+    let best = null;                 // {time, curve:[[lapDist, lapTime], ...]}
+    let cur = [];                    // samples for the lap in progress
+    let lapStartDist = null, prevLapNum = null, prevLastLap = null, lastSampleDist = -1;
+    const reset = () => { best = null; cur = []; lapStartDist = null; prevLapNum = null;
+                          prevLastLap = null; lastSampleDist = -1;
+                          e.textContent = '–'; e.style.color = '';
+                          note.textContent = 'complete a lap to set a reference'; };
+    update = d => {
+      const dist = d.distance_traveled, lapT = d.current_lap;
+      if (dist == null || lapT == null) return;
+      if (lapStartDist != null && dist < lapStartDist - 5) reset();   // race restart
+      if (lapStartDist == null) {
+        if (!d.is_racing) return;
+        lapStartDist = dist; lastSampleDist = -1;
+      }
+      const curNum = d.lap_number ?? null, last = d.last_lap ?? 0;
+      const isNewLap = last > 0 && (
+        (prevLapNum != null && curNum != null && curNum > prevLapNum) ||
+        (prevLastLap != null && Math.abs(last - prevLastLap) > 1e-3)
+      );
+      if (isNewLap) {
+        if (cur.length > 10 && (best === null || last < best.time))
+          best = { time: last, curve: cur };
+        cur = []; lapStartDist = dist; lastSampleDist = -1;
+      }
+      prevLapNum = curNum; prevLastLap = last;
+
+      const lapDist = dist - lapStartDist;
+      if (d.is_racing && lapDist - lastSampleDist >= 5) {   // sample every ~5 m
+        cur.push([lapDist, lapT]); lastSampleDist = lapDist;
+      }
+      if (!best) return;
+      // Interpolate the best lap's time at this distance-into-lap.
+      const c = best.curve;
+      let ref;
+      if (lapDist <= c[0][0]) ref = c[0][1];
+      else if (lapDist >= c[c.length-1][0]) ref = c[c.length-1][1];
+      else {
+        let lo = 0, hi = c.length - 1;
+        while (hi - lo > 1) { const m = (lo + hi) >> 1; if (c[m][0] <= lapDist) lo = m; else hi = m; }
+        const [d0,t0] = c[lo], [d1,t1] = c[hi];
+        ref = t0 + (t1 - t0) * ((lapDist - d0) / ((d1 - d0) || 1));
+      }
+      const delta = lapT - ref;
+      e.textContent = (delta >= 0 ? '+' : '−') + Math.abs(delta).toFixed(2);
+      e.style.color = delta <= 0 ? P('--good') : P('--warn');
+      note.textContent = `vs best ${fmtTime(best.time)}`;
+    };
+  } else if (f.type === 'launch') {
+    // Standing-start timer: arms when the car stops, starts on movement, and
+    // captures 0–60 mph / 0–100 km/h / ¼-mile using the game clock
+    // (timestamp_ms) and distance_traveled. Keeps last + best per metric.
+    body.className = 'rows';
+    const metrics = [['t60','0–60 mph'], ['t100','0–100 km/h'], ['tQ','¼ mile']];
+    const cells = {};
+    for (const [k, lbl] of metrics) {
+      const r = document.createElement('div'); r.className = 'row';
+      r.innerHTML = `<span class="k">${lbl}</span><span class="v">–</span>`;
+      body.appendChild(r); cells[k] = r.querySelector('.v');
+    }
+    const st = { phase: 'idle', t0: 0, d0: 0, done: {}, last: {}, best: {} };
+    const paint = () => { for (const [k] of metrics) {
+      const l = st.last[k], b = st.best[k];
+      cells[k].textContent = l == null ? '–'
+        : `${l.toFixed(2)}s` + (b != null && b < l - 1e-9 ? ` (best ${b.toFixed(2)})` : '');
+    }};
+    update = d => {
+      const v = (d.speed_kmh || 0) / 3.6, ts = d.timestamp_ms, dist = d.distance_traveled;
+      if (ts == null) return;
+      if (st.phase !== 'run') {
+        if (v < 0.3) st.phase = 'armed';
+        else if (st.phase === 'armed' && v >= 0.5 && d.is_racing) {
+          st.phase = 'run'; st.t0 = ts; st.d0 = dist ?? 0; st.done = {};
+        }
+        return;
+      }
+      const el = (ts - st.t0) / 1000;
+      if (el < 0 || el > 120) { st.phase = 'idle'; return; }   // clock wrap / gave up
+      const hit = (k, cond) => {
+        if (st.done[k] || !cond) return;
+        st.done[k] = true; st.last[k] = el;
+        if (st.best[k] == null || el < st.best[k]) st.best[k] = el;
+        paint();
+      };
+      hit('t60',  d.speed_mph >= 60);
+      hit('t100', d.speed_kmh >= 100);
+      if (dist != null) hit('tQ', dist - st.d0 >= 402.336);
+      if (v < 0.3) st.phase = 'armed';                          // stopped: rearm
+    };
+  } else if (f.type === 'dyno') {
+    // Live power/torque curve: bins the best full-throttle sample per 100 RPM.
+    // Resets when the car changes (car_ordinal).
+    const cv = mkCanvas(600, 200);
+    body.appendChild(cv);
+    let bins = new Map(), car = null, dirty = true, lastDraw = 0;
+    update = d => {
+      if (d.car_ordinal != null && d.car_ordinal !== car) { car = d.car_ordinal; bins = new Map(); dirty = true; }
+      const rpm = d.current_engine_rpm, p = d.power, tq = d.torque;
+      if (d.is_racing && (d.accel ?? 0) >= 250 && rpm > 500 && p > 0) {
+        const b = Math.round(rpm / 100) * 100;
+        const e0 = bins.get(b);
+        if (!e0 || p > e0.p) { bins.set(b, { p, tq: Math.max(tq || 0, e0 ? e0.tq : 0) }); dirty = true; }
+      }
+      const now = performance.now();
+      if (dirty && now - lastDraw > 250) {                   // redraw at most 4 Hz
+        drawDyno(cv, bins, d.engine_max_rpm || 8000, sub);
+        dirty = false; lastDraw = now;
+      }
+    };
+  } else if (f.type === 'stats') {
+    // Session maxima — only writes a row's DOM when its value actually changes.
+    body.className = 'rows';
+    const defs = [
+      ['maxSpeed', 'Top speed',  v => `${v.toFixed(1)} km/h`],
+      ['maxRpm',   'Peak RPM',   v => `${Math.round(v)}`],
+      ['maxPower', 'Peak power', v => `${(v/1000).toFixed(0)} kW`],
+      ['maxLat',   'Peak lat G', v => `${v.toFixed(2)} g`],
+      ['maxLong',  'Peak long G',v => `${v.toFixed(2)} g`],
+      ['fuelUsed', 'Fuel used',  v => `${(v*100).toFixed(1)} %`],
+    ];
+    const st = {}, cells = {}, shown = {};
+    for (const [k, lbl] of defs) {
+      const r = document.createElement('div'); r.className = 'row';
+      r.innerHTML = `<span class="k">${lbl}</span><span class="v">–</span>`;
+      body.appendChild(r); cells[k] = r.querySelector('.v');
+    }
+    const paint = () => { for (const [k,, f2] of defs) {
+      if (st[k] == null) continue;
+      const txt = f2(st[k]);
+      if (shown[k] !== txt) { shown[k] = txt; cells[k].textContent = txt; }
+    }};
+    update = d => {
+      if (!d.is_racing) return;
+      const bump = (k, v) => { if (v != null && (st[k] == null || v > st[k])) st[k] = v; };
+      bump('maxSpeed', d.speed_kmh);
+      bump('maxRpm', d.current_engine_rpm);
+      bump('maxPower', d.power);
+      bump('maxLat',  Math.abs(d.acceleration_x || 0) / 9.81);
+      bump('maxLong', Math.abs(d.acceleration_z || 0) / 9.81);
+      if (d.fuel != null) {
+        if (st.fuel0 == null || d.fuel > st.fuel0) st.fuel0 = d.fuel;   // first fill / refuel
+        st.fuelUsed = Math.max(st.fuelUsed || 0, st.fuel0 - d.fuel);
+      }
+      paint();
     };
   } else if (f.type === 'bool') {
     body.innerHTML = `<div class="ledwrap"><span class="led" id="l"></span><span id="t">–</span></div>`;
@@ -497,7 +809,7 @@ function makeWidget(f) {
     update = d => { const v = !!f.read(d); l.classList.toggle('on', v); t.textContent = v ? 'YES' : 'no'; };
   } else if (f.type === 'bar') {
     body.innerHTML = `<div class="bars"><div class="bar-wrap">
-      <div class="bar-track"><div class="bar-fill" style="background:${css(f.color)}"></div></div>
+      <div class="bar-track"><div class="bar-fill" style="background:${P(f.color)}"></div></div>
       <div class="bar-val" id="v">–</div></div></div>`;
     const fill = body.querySelector('.bar-fill'), v = body.querySelector('#v');
     update = d => { const val = f.read(d)||0; fill.style.height = Math.max(0,Math.min(100,val/f.max*100))+'%';
@@ -510,22 +822,23 @@ function makeWidget(f) {
       const val = f.read(d)||0, frac = Math.max(-1,Math.min(1,val/f.span));
       v.textContent = fmt(val, 2) + (f.unit||'');
       if (frac >= 0) { fill.style.left='50%'; fill.style.right='auto'; fill.style.width=(frac*50)+'%';
-                       fill.style.background=css('--good'); }
+                       fill.style.background=P('--good'); }
       else { fill.style.right='50%'; fill.style.left='auto'; fill.style.width=(-frac*50)+'%';
-             fill.style.background=css('--warn'); }
+             fill.style.background=P('--warn'); }
     };
   } else if (f.type === 'wheels') {
     body.className = 'tires';
-    const cells = {};
+    const cells = {}, lbls = {};
     for (const [lbl, sfx] of CORNERS) {
       const c = document.createElement('div'); c.className = 'tire';
       c.innerHTML = `<div class="t">–</div><div class="lbl">${lbl}</div>`;
-      body.appendChild(c); cells[sfx] = c.querySelector('.t');
+      body.appendChild(c); cells[sfx] = c.querySelector('.t'); lbls[sfx] = c.querySelector('.lbl');
     }
-    update = d => { for (const [,sfx] of CORNERS) {
+    update = d => { for (const [lbl, sfx] of CORNERS) {
       const v = d[`${f.base}_${sfx}`], el = cells[sfx];
       el.textContent = v==null ? '–' : (f.bool ? (v ? '●' : '○') : fmt(v, f.dec));
       if (f.color) el.style.color = f.color(v);
+      if (f.sub) { const s = f.sub(v); lbls[sfx].textContent = s ? `${lbl} · ${s}` : lbl; }
     }};
   } else if (f.type === 'multi') {
     body.className = 'rows';
@@ -541,28 +854,33 @@ function makeWidget(f) {
       r.querySelector('.v').textContent = fmt(val, 2);
       if (f.span != null) {
         const fill = r.querySelector('.fill'), frac = Math.max(-1,Math.min(1,val/f.span));
-        if (frac >= 0){ fill.style.left='50%'; fill.style.width=(frac*50)+'%'; fill.style.background=css('--good'); }
-        else { fill.style.left='auto'; fill.style.right='50%'; fill.style.width=(-frac*50)+'%'; fill.style.background=css('--warn'); }
+        if (frac >= 0){ fill.style.left='50%'; fill.style.width=(frac*50)+'%'; fill.style.background=P('--good'); }
+        else { fill.style.left='auto'; fill.style.right='50%'; fill.style.width=(-frac*50)+'%'; fill.style.background=P('--warn'); }
       }
     });
   } else if (f.type === 'gg') {
-    const cv = Object.assign(document.createElement('canvas'), {width:200, height:200});
+    const cv = mkCanvas(200, 200);
     cv.style.maxWidth = '200px'; cv.style.margin = '0 auto'; body.appendChild(cv);
     // Forza reports acceleration in the car's frame with the OPPOSITE sign
     // convention to a conventional G-G plot (top = accel, right = right turn).
     // Confirmed empirically against real FH6 driving — negate both axes so:
     //   braking  -> dot drops down,   accelerating -> dot moves up
     //   left tn  -> dot moves left,   right turn   -> dot moves right
-    update = d => drawGG(cv, -(d.acceleration_x||0)/9.81, -(d.acceleration_z||0)/9.81);
+    const hist = [];                 // flat [lat0, long0, lat1, long1, ...] ~5s @30Hz
+    update = d => {
+      const lat = -(d.acceleration_x||0)/9.81, lon = -(d.acceleration_z||0)/9.81;
+      if (d.is_racing) { hist.push(lat, lon); trim(hist, 300); }
+      drawGG(cv, lat, lon, hist);
+    };
   } else if (f.type === 'map') {
-    const cv = Object.assign(document.createElement('canvas'), {width:600, height:260});
+    const cv = mkCanvas(600, 260);
     body.appendChild(cv); const trail = [];
     update = d => {
       if (d.is_racing && d.position_x != null) {
-        // Capture throttle (accel) and brake with each point so drawMap can
-        // color the trail by driver input (overlays #5 onto the track map).
-        trail.push({x:d.position_x, z:d.position_z, t:d.accel ?? 0, b:d.brake ?? 0});
-        if (trail.length > MAXPTS*4) trail.shift();
+        // Throttle/brake are captured per point — including the precomputed
+        // segment color — so drawMap can batch same-colored runs.
+        trail.push({x:d.position_x, z:d.position_z, c:inputColor(d.accel ?? 0, d.brake ?? 0)});
+        trim(trail, MAXPTS*4);
       }
       drawMap(cv, trail);
     };
@@ -622,27 +940,27 @@ document.getElementById('closeX').onclick = closeDrawer;
 backdrop.onclick = closeDrawer;
 
 /* ---- recording controls -------------------------------------------------- */
-// Polls /record/status so the button reflects state even if recording was
-// started by a different tab/device.
+// State arrives as `aux` events on the SSE stream (1 Hz) — no separate
+// polling loop — so the button reflects recordings started by other tabs too.
 const recbtn = document.getElementById('recbtn');
 const reclabel = document.getElementById('reclabel');
 const recinfo = document.getElementById('recinfo');
+const autorecEl = document.getElementById('autorec');
+let recFlashUntil = 0;     // suppress aux repaints briefly after "saved …" flash
 
-function fmtRecDuration(s) {
-  if (!s || s < 0) return '';
-  const m = Math.floor(s / 60), sec = Math.floor(s - m * 60);
-  return `${m}:${String(sec).padStart(2, '0')}`;
-}
 function paintRecState(st) {
+  if (Date.now() < recFlashUntil) return;
   const on = !!st.recording;
   recbtn.classList.toggle('on', on);
   reclabel.textContent = on ? 'Stop' : 'Record';
   recinfo.textContent = on
-    ? `● ${fmtRecDuration(st.duration)}  ${st.rows.toLocaleString()} rows`
+    ? `● ${fmtClock(st.duration)}  ${st.rows.toLocaleString()} rows`
     : '';
   recbtn.title = on
     ? `Recording to ${st.filename} — click to stop`
     : 'Record telemetry to a .fhrec file';
+  if (st.auto != null && document.activeElement !== autorecEl)
+    autorecEl.checked = !!st.auto;
 }
 async function refreshRecStatus() {
   try {
@@ -662,15 +980,96 @@ recbtn.addEventListener('click', async () => {
       if (recording && st.filename) {
         // brief confirmation flash
         recinfo.textContent = `saved ${st.filename}`;
-        setTimeout(() => paintRecState({recording: false, rows: 0, duration: 0}), 2500);
+        recFlashUntil = Date.now() + 2500;
+        setTimeout(() => { recFlashUntil = 0; paintRecState({recording: false, rows: 0, duration: 0}); }, 2500);
       }
     }
   } catch {} finally {
     recbtn.disabled = false;
   }
 });
-refreshRecStatus();
-setInterval(refreshRecStatus, 1000);  // keep label/duration fresh while recording
+autorecEl.addEventListener('change', () => {
+  fetch('/record/auto', {method: 'POST', headers: {'Content-Type': 'application/json'},
+                         body: JSON.stringify({enabled: autorecEl.checked})}).catch(() => {});
+});
+
+/* ---- replay controls ------------------------------------------------------ */
+const libbtn = document.getElementById('libbtn');
+const replpanel = document.getElementById('replpanel');
+const recllist = document.getElementById('recllist');
+const replbar = document.getElementById('replbar');
+const rpPlay = document.getElementById('rpPlay'), rpScrub = document.getElementById('rpScrub');
+const rpTime = document.getElementById('rpTime'), rpSpeed = document.getElementById('rpSpeed');
+const rpFile = document.getElementById('rpFile'), rpStop = document.getElementById('rpStop');
+let replayActive = false, replayPaused = false, scrubbing = false;
+
+const post = (url, body) => fetch(url, {method: 'POST',
+  headers: {'Content-Type': 'application/json'},
+  body: JSON.stringify(body || {})}).then(r => r.ok ? r.json() : null).catch(() => null);
+
+function fmtSize(b) {
+  return b > 1048576 ? (b/1048576).toFixed(1) + ' MB' : Math.max(1, b/1024|0) + ' KB';
+}
+async function loadRecordingList() {
+  recllist.innerHTML = '<div class="none">Loading…</div>';
+  try {
+    const r = await fetch('/recordings', {cache: 'no-store'});
+    const {recordings} = await r.json();
+    if (!recordings.length) {
+      recllist.innerHTML = '<div class="none">No recordings yet — hit Record while driving.</div>';
+      return;
+    }
+    recllist.innerHTML = '';
+    for (const rec of recordings) {
+      const row = document.createElement('div'); row.className = 'rrow';
+      row.innerHTML = `<span class="fn">${rec.filename}</span><span class="sz">${fmtSize(rec.size)}</span>`;
+      row.onclick = async () => {
+        replpanel.hidden = true;
+        const st = await post('/replay/start', {filename: rec.filename});
+        if (st && !st.error) paintReplayState(st);
+      };
+      recllist.appendChild(row);
+    }
+  } catch {
+    recllist.innerHTML = '<div class="none">Could not load recordings.</div>';
+  }
+}
+libbtn.onclick = () => {
+  replpanel.hidden = !replpanel.hidden;
+  if (!replpanel.hidden) loadRecordingList();
+};
+document.addEventListener('click', e => {       // tap-away closes the panel
+  if (!replpanel.hidden && !replpanel.contains(e.target) && e.target !== libbtn)
+    replpanel.hidden = true;
+});
+
+function paintReplayState(st) {
+  replayActive = !!(st && st.active);
+  replbar.hidden = !replayActive;
+  libbtn.style.borderColor = replayActive ? P('--accent') : '';
+  if (!replayActive) return;
+  replayPaused = !!st.paused;
+  rpPlay.textContent = replayPaused ? '▶' : '⏸';
+  rpFile.textContent = st.filename || '';
+  if (!scrubbing) {
+    rpScrub.max = st.duration || 0;
+    rpScrub.value = st.t || 0;
+  }
+  rpTime.textContent = `${fmtClock(st.t)} / ${fmtClock(st.duration)}`;
+  if (document.activeElement !== rpSpeed) rpSpeed.value = String(st.speed ?? 1);
+}
+rpPlay.onclick = async () => paintReplayState(await post('/replay/ctl', {paused: !replayPaused}));
+rpStop.onclick = async () => paintReplayState(await post('/replay/stop'));
+rpSpeed.onchange = () => post('/replay/ctl', {speed: parseFloat(rpSpeed.value)});
+rpScrub.addEventListener('input', () => {
+  scrubbing = true;
+  rpTime.textContent = `${fmtClock(parseFloat(rpScrub.value))} / ${fmtClock(parseFloat(rpScrub.max))}`;
+});
+rpScrub.addEventListener('change', async () => {
+  const st = await post('/replay/ctl', {seek: parseFloat(rpScrub.value)});
+  scrubbing = false;
+  if (st) paintReplayState(st);
+});
 
 // Touch: swipe the drawer left to close (iPad-friendly).
 let _touchStartX = null;
@@ -687,6 +1086,7 @@ document.getElementById('actNone').onclick = () => { enabled = new Set(); saveCf
 
 buildMenu();
 applyConfig();
+refreshRecStatus();
 
 /* ---- live stream -------------------------------------------------------- */
 const dot = document.getElementById('dot'), statustext = document.getElementById('statustext'),
@@ -698,6 +1098,8 @@ const dot = document.getElementById('dot'), statustext = document.getElementById
 // the game pauses, a race ends, or packets stop arriving. A pause/menu frame
 // (is_race_on 0 with zeroed fields) does NOT overwrite the snapshot — only a
 // "meaningful" packet does — but live connection/identity bits always update.
+// (The server also skips SSE pushes entirely when no new packet arrived, so
+// an idle dashboard does no rendering work at all.)
 let retained = null;       // last merged snapshot we render from
 let lastFreshAt = 0;       // Date.now() of the last meaningful packet
 const STALE_MS = 1500;     // no fresh data for this long => "holding" status
@@ -727,7 +1129,8 @@ function handlePacket(d) {
   const stale = (now - lastFreshAt) > STALE_MS;
 
   dot.classList.toggle('on', !!d.connected);
-  statustext.textContent = !d.connected ? 'waiting for game…'
+  statustext.textContent = replayActive ? (replayPaused ? 'replay · paused' : 'replay')
+                         : !d.connected ? 'waiting for game…'
                          : d.is_racing  ? 'live'
                          : stale        ? 'paused — holding last values'
                                         : 'in menu / paused';
@@ -738,7 +1141,17 @@ function handlePacket(d) {
 
 const es = new EventSource('/stream');
 es.onmessage = ev => handlePacket(JSON.parse(ev.data));
+es.addEventListener('aux', ev => {
+  // 1 Hz side-channel: recording + replay status (also our keepalive).
+  try {
+    const a = JSON.parse(ev.data);
+    if (a.rec) paintRecState(a.rec);
+    paintReplayState(a.replay);
+  } catch {}
+});
 es.onerror = () => { statustext.textContent = 'stream lost — holding last values'; };
+
+if ('serviceWorker' in navigator) navigator.serviceWorker.register('sw.js').catch(() => {});
 </script>
 </body>
 </html>

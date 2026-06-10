@@ -1,0 +1,14 @@
+{
+  "name": "FH6 Telemetry",
+  "short_name": "FH6 Telem",
+  "description": "Live Forza Horizon 6 Data Out telemetry dashboard",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#0c0f14",
+  "theme_color": "#0c0f14",
+  "icons": [
+    { "src": "icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" }
+  ]
+}

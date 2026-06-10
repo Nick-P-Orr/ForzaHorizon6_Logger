@@ -2,10 +2,10 @@
   "version": "0.0.1",
   "configurations": [
     {
-      "name": "dashboard-demo",
-      "runtimeExecutable": "python3",
-      "runtimeArgs": ["server.py", "--demo", "--http-port", "8020"],
-      "port": 8020
+      "name": "fh6-dashboard-demo",
+      "runtimeExecutable": "/bin/sh",
+      "runtimeArgs": ["-c", "mkdir -p /tmp/fh6_preview && cp /Users/nickorr/Documents/GitHub/ForzaHorizon6_Logger/forza_telemetry.py /Users/nickorr/Documents/GitHub/ForzaHorizon6_Logger/server.py /tmp/fh6_preview/ && rm -rf /tmp/fh6_preview/web && cp -r /Users/nickorr/Documents/GitHub/ForzaHorizon6_Logger/web /tmp/fh6_preview/web && exec /usr/bin/python3 /tmp/fh6_preview/server.py --demo --http-port 8000"],
+      "port": 8000
     }
   ]
 }

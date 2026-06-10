@@ -23,6 +23,7 @@ Python 3.8+ (standard library only).
 | --- | --- |
 | [`server.py`](server.py) | Live browser dashboard (HTTP + Server-Sent Events). |
 | [`web/index.html`](web/index.html) | Dashboard UI — configurable widgets, ☰ menu to toggle any value. |
+| [`web/manifest.json`](web/manifest.json) + [`web/sw.js`](web/sw.js) + [`web/icon.svg`](web/icon.svg) | PWA install + cached offline shell (live data is never cached). |
 | [`forza_telemetry.py`](forza_telemetry.py) | Packet parser + UDP listener; also a standalone console readout. |
 | [`logger.py`](logger.py) | Decode every field and log it to CSV/JSONL. |
 | [`capture.py`](capture.py) | Raw packet recorder for reverse-engineering the layout. |
@@ -37,6 +38,10 @@ the browser (localStorage), so it persists across reloads.
 ```sh
 python3 server.py --port 5300        # listen for the game on UDP 5300
 python3 server.py --port 5300 --demo # try it with fake data, no game needed
+python3 server.py --port 5300 --forward 192.168.1.50:5301
+                                     # rebroadcast raw packets to a 2nd consumer
+python3 server.py --port 5300 --auto-record
+                                     # start recording whenever a race starts
 ```
 
 Then open <http://localhost:8000>.
@@ -45,14 +50,32 @@ Then open <http://localhost:8000>.
 `.fhrec` file in `recordings/`. The button shows a pulsing red dot, the elapsed
 time, and the row count while active; click again to stop. Files are JSONL —
 the first line is metadata, every following line is the same dict the `/stream`
-SSE sends, plus a `t` field with seconds since recording started (so a future
-replayer can preserve the cadence). The `recordings/` dir is git-ignored.
+SSE sends, plus a `t` field with seconds since recording started so replays
+preserve the cadence. The `recordings/` dir is git-ignored.
+
+**Auto-record:** tick *auto-record races* in the **▶** panel (or pass
+`--auto-record`) and the server starts a recording the moment `is_race_on` goes
+high and stops it 5 s after racing ends — pausing the game won't split the file.
+
+**Replay:** click **▶** in the header, pick a recording, and the whole dashboard
+plays it back — every widget, the track map, lap timing — exactly as it streamed
+live. A transport bar appears at the bottom with play/pause, a scrub slider, and
+0.5×–4× playback speed. Stopping the replay hands the dashboard back to the live
+feed.
+
+**Forwarding:** only one process can bind the game's UDP port, so the dashboard
+and `logger.py` normally can't run at once. `--forward HOST:PORT` rebroadcasts
+every raw packet to a second address — point it at another port (or another
+machine) and run the logger there.
 
 **On iPad:** open the dashboard URL in Safari, then **Share → Add to Home Screen**.
 The app launches full-screen with no browser chrome, honors notch / Dynamic Island
 safe areas, has 44 pt touch targets in the ☰ menu, and you can swipe the drawer
 left to close it. Grid breakpoints adapt at iPad portrait width (wide cards span
-the full row) and phone width (single column).
+the full row) and phone width (single column). A web app manifest + service
+worker make it a proper installable PWA (with an icon) on Android/desktop too,
+and the shell loads from cache instantly. All canvases render at native retina
+resolution.
 
 Each value uses a visualization suited to it:
 
@@ -63,16 +86,20 @@ Each value uses a visualization suited to it:
 | Vertical bar | Clutch, handbrake, fuel |
 | Centered bidirectional bar | Steering, boost (signed values) |
 | 2×2 wheel grid | Tire temps/slip, suspension, per-wheel flags (color-coded) |
-| G-G plot | Lateral/longitudinal g-force |
+| G-G plot | Lateral/longitudinal g-force, with a fading 5 s scatter of the grip history |
 | Track map | Top-down position trail (from world X/Z), colored by driver input — green = throttle, red = brake, gray = coasting |
+| Lap delta | Live ± gap to your best lap at the same distance-into-lap (green = ahead, red = behind) |
+| Launch timing | Auto-timed standing starts: 0–60 mph, 0–100 km/h, ¼ mile (last + best) |
+| Power curve | Live dyno: best full-throttle power/torque sample per 100 RPM, with peak annotations; resets when you change car |
+| Session stats | Running maxima — top speed, peak RPM/power/g, fuel used |
 | Large readout | Gear, lap times, race position, car class/PI, etc. |
 | Lap history list | Last 5 completed lap times (latest highlighted, best lap in green) |
 | LED indicator | Booleans like "race active" |
 
 The ☰ menu groups widgets (Speed & Engine, Drivetrain, Inputs, Tires & Wheels,
 Suspension, Chassis/Motion, Position, Lap & Race, Car Info, Status) and has
-**Defaults / All on / All off** shortcuts. Fourteen sensible widgets are on by
-default; all ~49 are available.
+**Defaults / All on / All off** shortcuts. Sixteen sensible widgets are on by
+default; all 53 are available.
 
 ## Console readout
 
@@ -155,7 +182,7 @@ fields appear four times with suffixes `_fl _fr _rl _rr` (front/rear, left/right
 | `tire_slip_angle_*` | float | `-0.0033` | Lateral slip angle (0 = full grip) |
 | `tire_combined_slip_*` | float | `0.148` | Combined slip magnitude |
 | `wheel_rot_speed_*` | float | `126.4` | Wheel angular speed (rad/s) |
-| `tire_temp_*` | float | `166.1` | Tire temp; `0 … 224` observed |
+| `tire_temp_*` | float | `166.1` | Tire temp in **°F**; `0 … 224` observed (≈ 0–107 °C) |
 | `wheel_on_rumble_*` | int | `0` | On rumble strip (0/1) |
 | `wheel_in_puddle_*` | float | `0.0` | Depth in puddle (0–1) |
 | `surface_rumble_*` | float | `0.0` | Surface rumble feedback |
@@ -194,10 +221,10 @@ fields appear four times with suffixes `_fl _fr _rl _rr` (front/rear, left/right
 | `lap_number` | uint16 | `0` | Current lap |
 | `race_position` | uint8 | `0` | Race position |
 
-> Note on units: in this FH6 session `tire_temp_*` ranged `0 … 224` — higher than
-> the ~80–120 °C typical of earlier Forza titles, so FH6 may report tire temp on
-> a different scale. The value is real and tracks driving; treat the unit as
-> unconfirmed.
+> Note on units: `tire_temp_*` is reported in **Fahrenheit**, as in earlier Forza
+> titles. In the real session, moving tires read ~165 °F ≈ 74 °C and the maximum
+> 224 °F ≈ 107 °C — physically sensible in °F, absurd in °C. The dashboard shows
+> both units.
 
 ## Raw capture (format reverse-engineering)
 
@@ -282,11 +309,14 @@ forza_telemetry.py  ── parse() unpacks the C-struct ──┐
 ### Why these choices
 
 The stdlib-only constraint means it runs anywhere Python does with no setup;
-binary packet parsing is exactly what `struct` is built for; and SSE + canvas
-gives a real-time UI without a JS toolchain. The tradeoff: hand-drawn canvas
-widgets are more code than dropping in a charting library, and SSE is one-way
-(fine for live readout; a future record/replay control channel may want a
-second endpoint).
+binary packet parsing is exactly what `struct` is built for (each packet block
+is unpacked with a single precompiled `struct.Struct` call); and SSE + canvas
+gives a real-time UI without a JS toolchain. Each packet is JSON-encoded once
+and the bytes are shared by every connected browser; replays are pushed through
+the same publish path, which is why the whole dashboard "just works" on
+recordings. The tradeoff: hand-drawn canvas widgets are more code than dropping
+in a charting library, and SSE is one-way — record/replay controls use plain
+POST endpoints alongside it.
 
 ## TODOs
 
@@ -296,7 +326,9 @@ second endpoint).
 - ~~Make the "last lap time" save the last five laps~~ (done)
 - ~~Overlay the braking and throttle traces onto the track map~~ (done)
 - ~~Telemetry record feature — save a race of telemetry~~ (done — Record button
-  in the dashboard header writes a `.fhrec` JSONL file. Replay feature still TODO.)
+  in the dashboard header writes a `.fhrec` JSONL file; auto-record optional.)
+- ~~Replay a recorded session~~ (done — ▶ panel lists recordings; playback drives
+  the full dashboard with play/pause, scrubbing, and 0.5×–4× speed.)
 - ~~G-forces are inverted?~~ (done — Forza reports car-frame acceleration with the
   opposite sign convention to a conventional G-G plot; both axes are now negated
   so acceleration goes up, braking goes down, right turn goes right.)

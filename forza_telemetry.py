@@ -1,8 +1,9 @@
 #!/usr/bin/env python3
 """Parser and UDP listener for Forza Horizon 6 "Data Out" telemetry.
 
-Forza streams a fixed-size binary struct over UDP every frame (~60 Hz) to the
-IP/port configured under Settings > HUD and Gameplay > Telemetry > Data Out.
+Forza streams a fixed-size binary struct over UDP every frame (~111 Hz measured
+in FH6) to the IP/port configured under Settings > HUD and Gameplay > Telemetry
+> Data Out.
 
 The packet has two parts:
 
@@ -147,6 +148,28 @@ def _read(data: bytes, type_code: str, offset: int):
     return struct.unpack_from(_FMT[type_code], data, offset)[0]
 
 
+def _compile_block(fields) -> tuple:
+    """Precompile a contiguous field block into one struct.Struct.
+
+    Unpacking the whole block in a single call is ~10x cheaper than one
+    unpack_from per field, which matters at FH6's ~111 packets/sec. Raises if
+    the field table ever becomes non-contiguous (then per-field parsing would
+    be needed again).
+    """
+    fmt = "<"
+    pos = 0
+    for name, tc, off in fields:
+        if off != pos:
+            raise ValueError(f"field {name!r} at offset {off}, expected {pos}")
+        fmt += tc
+        pos += _SIZE[tc]
+    return struct.Struct(fmt), tuple(n for n, _, _ in fields)
+
+
+_SLED_STRUCT, _SLED_NAMES = _compile_block(SLED_FIELDS)
+_DASH_STRUCT, _DASH_NAMES = _compile_block(DASH_FIELDS)
+
+
 def _score_dash_base(data: bytes, base: int) -> int:
     """Heuristic plausibility score for a candidate Dash base offset.
 
@@ -179,13 +202,30 @@ def _score_dash_base(data: bytes, base: int) -> int:
     return score
 
 
+# Sticky detection cache: packet length -> [base, packets_until_recheck].
+# The layout can't change mid-session except via a game patch, so re-scoring
+# every packet is wasted work; re-verify every _DASH_RECHECK packets instead.
+_dash_cache: dict = {}
+_DASH_RECHECK = 256
+
+
 def detect_dash_base(data: bytes) -> Optional[int]:
-    """Pick the most plausible Dash base offset for this packet, or None."""
+    """Pick the most plausible Dash base offset for this packet, or None.
+
+    Cached per packet length; re-scored every _DASH_RECHECK packets so a
+    mid-session layout change (or a bad first guess) self-corrects.
+    """
+    ent = _dash_cache.get(len(data))
+    if ent is not None and ent[1] > 0:
+        ent[1] -= 1
+        return ent[0]
+
     best_base, best_score = None, 0
     for base in DASH_BASE_CANDIDATES:
         s = _score_dash_base(data, base)
         if s > best_score:
             best_base, best_score = base, s
+    _dash_cache[len(data)] = [best_base, _DASH_RECHECK]
     return best_base
 
 
@@ -250,15 +290,13 @@ def parse(data: bytes, dash_base: Optional[int] = None) -> TelemetryPacket:
     """
     values: dict = {}
     if len(data) >= SLED_END:
-        for name, tc, off in SLED_FIELDS:
-            values[name] = _read(data, tc, off)
+        values = dict(zip(_SLED_NAMES, _SLED_STRUCT.unpack_from(data, 0)))
 
     if dash_base is None:
         dash_base = detect_dash_base(data)
 
     if dash_base is not None and dash_base + DASH_SPAN <= len(data):
-        for name, tc, rel in DASH_FIELDS:
-            values[name] = _read(data, tc, dash_base + rel)
+        values.update(zip(_DASH_NAMES, _DASH_STRUCT.unpack_from(data, dash_base)))
 
     return TelemetryPacket(raw_len=len(data), dash_base=dash_base, values=values)
 
@@ -351,4 +389,5 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(description="Forza Data Out console readout")
     ap.add_argument("--host", default="0.0.0.0")
     ap.add_argument("--port", type=int, default=5300)
-    raise SystemExit(_console(*vars(ap.parse_args()).values()))
+    args = ap.parse_args()
+    raise SystemExit(_console(args.host, args.port))
